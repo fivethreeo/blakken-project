@@ -1,0 +1,3 @@
+[submodule "typescript-frontend/turnpage-project"]
+	path = typescript-frontend/turnpage-project
+	url = git@github.com:fivethreeo/turnpage.git

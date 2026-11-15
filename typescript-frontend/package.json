@@ -3,10 +3,17 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "workspaces": [
+    "turnpage-project"
+  ],
   "scripts": {
-    "build": "rsbuild build",
-    "dev": "rsbuild",
+    "build": "npm run build:turnpage && rsbuild build",
+    "build:turnpage": "npm run build --workspace turnpage-book",
+    "dev": "npm run build:turnpage && rsbuild",
     "preview": "rsbuild preview"
+  },
+  "dependencies": {
+    "turnpage-book": "^0.1.0"
   },
   "devDependencies": {
     "@rsbuild/core": "^2.2.14",
