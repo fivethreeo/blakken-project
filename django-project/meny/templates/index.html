@@ -10,12 +10,7 @@
   {% include 'includes/icons.svg' %}
   <script>document.body.classList.replace('no-js', 'with-js');</script>
   <a class="skip-link" href="#book">Hopp til menyen</a>
-  <main class="menu-shell center stack">
-    <header class="menu-heading stack">
-      <h1>{{ menu.name }}</h1>
-      {% if menu.description %}<p>{{ menu.description|linebreaksbr }}</p>{% endif %}
-    </header>
-
+  <main class="menu-shell menu-only center" aria-label="{{ menu.name }}">
     <section class="reader" id="book" data-page-turn aria-label="{{ menu.name }}"
       data-pages-url="{% url 'menu-pages' menu.pk %}">
       <div class="book-stage">
@@ -32,19 +27,21 @@
         <button data-book-next type="button" disabled>Åpne menyen</button>
         <button data-book-text type="button" aria-expanded="false"
           aria-controls="source-pages" disabled>Tekstmeny</button>
+        {% if user.is_staff or user.is_superuser %}<a href="{% url 'orders' %}">Bestillinger</a>{% endif %}
       </nav>
-      <p class="reader-help">Bla med pilknappene, knappene eller berøringsskjermen.</p>
+      <p class="visually-hidden">Bla med pilknappene, knappene eller berøringsskjermen.</p>
       <p class="visually-hidden" id="page-description" data-book-description></p>
 
       {% include 'menu/pages.html' %}
     </section>
 
-    <dialog class="dish-editor imposter contain box" data-dish-editor aria-labelledby="dish-editor-title">
+    {% if not user.is_staff and not user.is_superuser %}{% include 'menu/cart.html' %}{% endif %}
+
+    <dialog class="dish-editor menu-editor imposter contain box" data-dish-editor aria-labelledby="dish-editor-title">
       <div class="stack">
         <header class="slide-header cluster">
           <p class="slide-label">Små endringer, gode smaker</p>
           <div class="reader-controls cluster">
-            <button type="button" data-dish-add disabled>Legg til</button>
             <button type="button" data-dish-delete disabled>Slett</button>
             <button type="button" data-dish-editor-close>Lukk</button>
           </div>
@@ -79,6 +76,47 @@
           <footer class="reader-controls cluster">
             <button type="submit" data-dish-save>Lagre endringer</button>
             <button type="button" data-dish-editor-close>Avbryt</button>
+          </footer>
+        </form>
+      </div>
+    </dialog>
+    <dialog class="menu-editor imposter contain box" data-page-editor aria-labelledby="page-editor-title">
+      <div class="stack">
+        <header class="slide-header cluster">
+          <p class="slide-label" data-page-editor-label>Plass til flere gode smaker</p>
+          <div class="reader-controls cluster">
+            <button type="button" data-page-editor-close>Lukk</button>
+          </div>
+        </header>
+        <h2 id="page-editor-title">Legg til side</h2>
+        <p id="page-editor-error" data-page-editor-error role="alert" hidden></p>
+        <section class="stack" data-page-delete-prompt hidden aria-label="Bekreft sletting">
+          <p data-page-delete-message></p>
+          <div class="reader-controls cluster">
+            <button type="button" data-page-delete-confirm>Ja, slett siden</button>
+            <button type="button" data-page-editor-close>Avbryt</button>
+          </div>
+        </section>
+        <form class="stack" data-page-form>
+          <label class="stack dish-editor-field">
+            <span>Navn i innholdet</span>
+            <input name="name" type="text" maxlength="150" required autocomplete="off">
+          </label>
+          <label class="stack dish-editor-field">
+            <span>Stor overskrift</span>
+            <input name="heading" type="text" maxlength="200" required autocomplete="off">
+          </label>
+          <label class="stack dish-editor-field">
+            <span>Liten overskrift</span>
+            <input name="decorative_title" type="text" maxlength="150" required autocomplete="off">
+          </label>
+          <label class="stack dish-editor-field">
+            <span>Introduksjon (valgfri)</span>
+            <textarea name="content" rows="3"></textarea>
+          </label>
+          <footer class="reader-controls cluster">
+            <button type="submit" data-page-save>Legg til side</button>
+            <button type="button" data-page-editor-close>Avbryt</button>
           </footer>
         </form>
       </div>

@@ -47,6 +47,16 @@ class Job(models.Model):
         ordering = ('-created_at', '-pk')
 
 
+class ShopStatus(models.Model):
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    is_open = models.BooleanField(default=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(condition=models.Q(pk=1), name='single_shop_status'),
+        ]
+
+
 class Menu(models.Model):
     name = models.CharField(max_length=150)
     show_toc = models.BooleanField(default=True)
@@ -86,6 +96,7 @@ class MenuPage(models.Model):
 
     menu = models.ForeignKey(Menu, on_delete=models.CASCADE, related_name='pages')
     position = models.PositiveIntegerField(default=0, db_index=True)
+    is_visible = models.BooleanField(default=True, verbose_name='Visible to customers')
     name = models.CharField(max_length=150)
     slug = models.SlugField(max_length=160, blank=True)
     is_continuation = models.BooleanField(
@@ -134,9 +145,31 @@ class MenuPage(models.Model):
         return self.name
 
 
+def menu_page_groups(pages):
+    groups = []
+    for page in pages[1:-1]:
+        if page.is_continuation and groups and groups[-1][0].layout != MenuPage.Layout.COVER:
+            groups[-1].append(page)
+        else:
+            groups.append([page])
+    return groups
+
+
+def visible_menu_pages(pages):
+    visible = []
+    category_visible = True
+    for page in pages:
+        if not page.is_continuation or page.layout == MenuPage.Layout.COVER:
+            category_visible = page.is_visible
+        if category_visible and page.is_visible:
+            visible.append(page)
+    return visible
+
+
 class Dish(models.Model):
     menu_page = models.ForeignKey(MenuPage, on_delete=models.CASCADE, related_name='dishes')
     position = models.PositiveIntegerField(default=0)
+    is_visible = models.BooleanField(default=True, verbose_name='Visible to customers')
     name = models.CharField(max_length=150)
     description = models.TextField(blank=True)
     price = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
@@ -147,3 +180,39 @@ class Dish(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class Order(models.Model):
+    class Status(models.TextChoices):
+        NEW = 'new', 'Ny'
+        PREPARING = 'preparing', 'Tilberedes'
+        READY = 'ready', 'Klar'
+        COMPLETED = 'completed', 'Fullført'
+        CANCELLED = 'cancelled', 'Kansellert'
+
+    menu = models.ForeignKey(Menu, null=True, on_delete=models.SET_NULL)
+    menu_name = models.CharField(max_length=150)
+    submission_id = models.UUIDField(unique=True, editable=False)
+    request_fingerprint = models.CharField(max_length=64, editable=False)
+    customer_channel = models.UUIDField(null=True, editable=False, db_index=True)
+    customer_name = models.CharField(max_length=150)
+    phone = models.CharField(max_length=32)
+    note = models.TextField(blank=True, max_length=2000)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.NEW, db_index=True)
+    total = models.DecimalField(max_digits=12, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ('-created_at', '-pk')
+
+
+class OrderItem(models.Model):
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='items')
+    dish = models.ForeignKey(Dish, null=True, on_delete=models.SET_NULL)
+    name = models.CharField(max_length=150)
+    quantity = models.PositiveSmallIntegerField(validators=[MinValueValidator(1)])
+    unit_price = models.DecimalField(max_digits=8, decimal_places=2)
+
+    class Meta:
+        ordering = ('pk',)

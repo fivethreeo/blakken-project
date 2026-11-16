@@ -25,7 +25,7 @@ class DishInline(nested_admin.SortableHiddenMixin, nested_admin.NestedTabularInl
     form = DishAdminForm
     extra = 0
     ordering = ('position', 'pk')
-    fields = ('position', 'name', 'description', 'price', 'allergens')
+    fields = ('position', 'is_visible', 'name', 'description', 'price', 'allergens')
 
 
 class MenuPageAdminForm(forms.ModelForm):
@@ -66,7 +66,7 @@ class MenuPageInline(nested_admin.SortableHiddenMixin, nested_admin.NestedStacke
     ordering = ('position', 'pk')
     prepopulated_fields = {'slug': ('name',)}
     fields = (
-        'position', 'name', 'slug', 'is_continuation', 'heading', 'decorative_title', 'descriptive_title',
+        'position', 'is_visible', 'name', 'slug', 'is_continuation', 'heading', 'decorative_title', 'descriptive_title',
         'content', 'image', 'layout', 'overlay', 'text_shadow',
     )
     inlines = (DishInline,)
@@ -75,8 +75,8 @@ class MenuPageInline(nested_admin.SortableHiddenMixin, nested_admin.NestedStacke
 @admin.register(MenuPage)
 class MenuPageAdmin(SortableAdminMixin, nested_admin.NestedModelAdmin):
     form = MenuPageAdminForm
-    list_display = ('name', 'decorative_title', 'heading', 'menu', 'layout', 'is_continuation')
-    list_filter = ('menu',)
+    list_display = ('name', 'decorative_title', 'heading', 'menu', 'layout', 'is_continuation', 'is_visible')
+    list_filter = ('menu', 'is_visible')
     prepopulated_fields = {'slug': ('name',)}
     inlines = (DishInline,)
 

@@ -6,6 +6,7 @@ from pathlib import Path
 import runpy
 import signal
 import tempfile
+from uuid import uuid4
 from threading import Thread
 from urllib.error import HTTPError, URLError
 from unittest.mock import Mock, patch
@@ -31,7 +32,7 @@ from .admin import (
     MenuPageInline, MenuPageInlineFormSet,
 )
 from .celery import app
-from .models import Dish, Job, Menu, MenuPage
+from .models import Dish, Job, Menu, MenuPage, Order, OrderItem, ShopStatus
 from .tasks import notify
 from .templatetags.menu_tags import get_menu_pages
 
@@ -184,7 +185,7 @@ class MenuAdminTests(TestCase):
 
     def test_pages_have_sortable_admin_with_menu_filter_and_dish_inline(self):
         self.assertTrue(issubclass(MenuPageAdmin, SortableAdminMixin))
-        self.assertEqual(MenuPageAdmin.list_filter, ('menu',))
+        self.assertEqual(MenuPageAdmin.list_filter, ('menu', 'is_visible'))
         self.assertEqual(MenuPageAdmin.inlines, (DishInline,))
         self.assertIsInstance(admin.site._registry[MenuPage], MenuPageAdmin)
 
@@ -203,7 +204,7 @@ class MenuAdminTests(TestCase):
         self.client.force_login(user)
         response = self.client.get(reverse('admin:meny_menupage_changelist'))
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.context['cl'].filter_specs), 1)
+        self.assertEqual(len(response.context['cl'].filter_specs), 2)
         self.assertContains(response, 'adminsortable2')
         change_response = self.client.get(reverse('admin:meny_menupage_change', args=[page.pk]))
         self.assertEqual(change_response.status_code, 200)
@@ -270,6 +271,27 @@ class DishEditTests(TestCase):
         self.assertEqual(self.dish.description, '')
         self.assertEqual(self.dish.allergens, [])
 
+    def test_visibility_updates_preserve_dish_data_and_require_a_boolean(self):
+        self.client.force_login(self.staff)
+        for visible in (False, True):
+            response = self.client.patch(self.url, {'is_visible': visible}, content_type='application/json')
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()['dish']['is_visible'], visible)
+            self.dish.refresh_from_db()
+            self.assertEqual(self.dish.is_visible, visible)
+            self.assertEqual(self.dish.name, 'Butter chicken')
+            self.assertEqual(self.dish.position, 7)
+            self.assertEqual(str(self.dish.price), '249.00')
+        for value in ('false', 0, 1, None, [], {}):
+            response = self.client.patch(
+                self.url, {'name': 'Do not save', 'is_visible': value}, content_type='application/json',
+            )
+            self.assertEqual(response.status_code, 400)
+            self.assertIn('is_visible', response.json()['errors'])
+        self.dish.refresh_from_db()
+        self.assertTrue(self.dish.is_visible)
+        self.assertEqual(self.dish.name, 'Butter chicken')
+
     def test_invalid_values_do_not_save_any_fields(self):
         self.client.force_login(self.staff)
         before = Dish.objects.values().get(pk=self.dish.pk)
@@ -322,6 +344,10 @@ class DishEditTests(TestCase):
                 self.client.force_login(user)
             self.assertEqual(self.client.get(self.url).status_code, status)
             self.assertEqual(self.client.delete(self.url).status_code, status)
+            self.assertEqual(
+                self.client.get(reverse('dish-list', args=[self.menu.pk, self.page.pk])).status_code,
+                status,
+            )
             self.assertEqual(
                 self.client.post(
                     reverse('dish-list', args=[self.menu.pk, self.page.pk]),
@@ -396,7 +422,13 @@ class DishEditTests(TestCase):
             self.client.post(wrong_menu, {'name': 'Wrong menu'}, content_type='application/json').status_code,
             404,
         )
-        self.assertEqual(self.client.get(url).status_code, 405)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['dish'], {
+            'id': None, 'name': '', 'description': '', 'price': None, 'allergens': [], 'is_visible': True,
+        })
+        self.assertEqual(response.json()['create_url'], url)
+        self.assertTrue(response.json()['allergen_choices'])
         self.assertEqual(self.page.dishes.count(), 1)
 
     def test_deletion_is_menu_scoped_and_leaves_other_dishes_and_category_intact(self):
@@ -421,6 +453,288 @@ class DishEditTests(TestCase):
         )
         self.assertEqual(self.page.dishes.count(), 0)
         self.assertTrue(MenuPage.objects.filter(pk=self.page.pk).exists())
+
+
+@override_settings(FRONTEND_ENABLED=False)
+class MenuPageActionTests(TestCase):
+    def setUp(self):
+        self.menu = Menu.objects.create(id=2, name='Lunch', show_toc=False, max_per_page=2, max_per_extra_page=2)
+        self.front = MenuPage.objects.create(
+            menu=self.menu, name='Front', heading='Lunch', decorative_title='Welcome',
+            layout='cover', position=0,
+        )
+        self.category = MenuPage.objects.create(
+            menu=self.menu, name='Curry', heading='Curry', decorative_title='Warm spices', position=3,
+        )
+        self.continuation = MenuPage.objects.create(
+            menu=self.menu, name='Curry', slug='curry-manual', is_continuation=True,
+            decorative_title='More warm spices', position=3,
+        )
+        self.next_category = MenuPage.objects.create(
+            menu=self.menu, name='Dessert', heading='Dessert', decorative_title='A sweet ending', position=3,
+        )
+        self.back = MenuPage.objects.create(
+            menu=self.menu, name='Back', heading='Thanks', decorative_title='See you soon',
+            layout='cover', position=10,
+        )
+        for index in range(3):
+            Dish.objects.create(menu_page=self.category, name=f'Curry dish {index}', position=index)
+        self.staff = get_user_model().objects.create_user(username='page-editor', is_staff=True)
+        self.url = reverse('menu-pages', args=[self.menu.pk])
+        self.move_url = reverse('move-page', args=[self.menu.pk, self.category.pk])
+        self.data = {
+            'after_page_id': self.category.pk,
+            'name': 'Lunch specials', 'heading': 'Something special',
+            'decorative_title': 'Made with care', 'content': 'Seasonal favourites.',
+        }
+
+    def test_visibility_round_trip_hides_category_and_all_continuations_only_for_customers(self):
+        self.client.force_login(self.staff)
+        url = reverse('page-visibility', args=[self.menu.pk, self.category.pk])
+        manual_dish = Dish.objects.create(menu_page=self.continuation, name='Manual curry')
+        for visible in (False, True):
+            response = self.client.patch(url, {'is_visible': visible}, content_type='application/json')
+            self.assertEqual(response.status_code, 200)
+            for page in (self.category, self.continuation):
+                page.refresh_from_db()
+                self.assertEqual(page.is_visible, visible)
+            self.assertEqual(Dish.objects.filter(menu_page=self.category).count(), 3)
+            manual_dish.refresh_from_db()
+            self.assertTrue(manual_dish.is_visible)
+            staff_view = self.client.get(self.url)
+            self.assertContains(staff_view, 'Curry dish 0')
+            self.assertContains(staff_view, 'Manual curry')
+            self.assertContains(staff_view, 'id="curry-to"')
+            self.assertContains(staff_view, f'aria-label="{"Skjul" if visible else "Vis"} Curry for kunder"')
+            icon = 'eyeopen' if visible else 'eyedisabled'
+            self.assertContains(staff_view, f'<use href="#{icon}" xlink:href="#{icon}"></use>')
+            if not visible:
+                self.assertContains(staff_view, '(skjult for kunder)')
+            guest = Client().get(self.url)
+            for text in ('Curry dish 0', 'Manual curry', 'id="curry-to"'):
+                if visible:
+                    self.assertContains(guest, text)
+                else:
+                    self.assertNotContains(guest, text)
+            self.assertContains(guest, 'Dessert')
+            self.assertContains(guest, 'Welcome')
+            self.assertContains(guest, 'See you soon')
+        self.assertEqual(list(self.menu.pages.values_list('pk', flat=True)), [
+            self.front.pk, self.category.pk, self.continuation.pk, self.next_category.pk, self.back.pk,
+        ])
+
+    def test_page_visibility_requires_staff_csrf_scope_and_strict_boolean_and_protects_covers(self):
+        url = reverse('page-visibility', args=[self.menu.pk, self.category.pk])
+        data = {'is_visible': False}
+        self.assertEqual(self.client.patch(url, data, content_type='application/json').status_code, 401)
+        ordinary = get_user_model().objects.create_user(username='visibility-reader')
+        self.client.force_login(ordinary)
+        self.assertEqual(self.client.patch(url, data, content_type='application/json').status_code, 403)
+        superuser = get_user_model().objects.create_user(
+            username='visibility-superuser', is_superuser=True, is_staff=False,
+        )
+        for user in (self.staff, superuser):
+            self.client.force_login(user)
+            for visible in (False, True):
+                self.assertEqual(self.client.patch(
+                    url, {'is_visible': visible}, content_type='application/json',
+                ).status_code, 200)
+        self.assertEqual(self.client.get(url).status_code, 405)
+        for body in ('{', 'null', '[]', '{}', '{"is_visible":false,"name":"Other"}',
+                     '{"is_visible":0}', '{"is_visible":"false"}'):
+            self.assertEqual(self.client.patch(url, body, content_type='application/json').status_code, 400)
+        self.assertEqual(self.client.patch(url, '{}', content_type='text/plain').status_code, 415)
+        other = Menu.objects.create(name='Other')
+        for menu_id, page_id, expected in (
+            (other.pk, self.category.pk, 404), (self.menu.pk, self.back.pk + 100, 404),
+            (self.menu.pk, self.front.pk, 400), (self.menu.pk, self.back.pk, 400),
+        ):
+            target = reverse('page-visibility', args=[menu_id, page_id])
+            self.assertEqual(self.client.patch(target, data, content_type='application/json').status_code, expected)
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(self.staff)
+        token = str(client.get('/').context['csrf_token'])
+        self.assertEqual(client.patch(url, data, content_type='application/json').status_code, 403)
+        self.assertEqual(client.patch(
+            url, data, content_type='application/json', HTTP_X_CSRFTOKEN=token,
+        ).status_code, 200)
+
+    def test_moves_preserve_covers_and_manual_and_automatic_continuations(self):
+        superuser = get_user_model().objects.create_user(username='page-superuser', is_superuser=True)
+        for user in (self.staff, superuser):
+            self.client.force_login(user)
+            response = self.client.post(self.move_url, {'direction': 'right'})
+            self.assertEqual(response.status_code, 200)
+            self.assertTrue(response.json()['moved'])
+            self.assertEqual(list(self.menu.pages.all()), [
+                self.front, self.next_category, self.category, self.continuation, self.back,
+            ])
+            rendered = get_menu_pages(self.menu)
+            self.assertEqual([page.slug for page in rendered], [
+                'front', 'dessert', 'curry', 'curry-to', 'curry-manual', 'back',
+            ])
+            url = reverse('move-page', args=[self.menu.pk, self.continuation.pk])
+            self.assertTrue(self.client.post(url, {'direction': 'left'}).json()['moved'])
+            self.assertEqual(list(self.menu.pages.values_list('position', flat=True)), list(range(5)))
+            self.assertEqual(list(self.menu.pages.all()), [
+                self.front, self.category, self.continuation, self.next_category, self.back,
+            ])
+
+    def test_move_boundaries_and_covers_are_not_reordered(self):
+        self.client.force_login(self.staff)
+        for page, direction in (
+            (self.front, 'right'), (self.back, 'left'),
+            (self.category, 'left'), (self.next_category, 'right'),
+        ):
+            url = reverse('move-page', args=[self.menu.pk, page.pk])
+            self.assertFalse(self.client.post(url, {'direction': direction}).json()['moved'])
+        self.assertEqual(self.client.post(self.move_url, {'direction': 'up'}).status_code, 400)
+        self.assertEqual(self.client.get(self.move_url).status_code, 405)
+        self.assertEqual(list(self.menu.pages.all()), [
+            self.front, self.category, self.continuation, self.next_category, self.back,
+        ])
+
+    def test_new_category_is_inserted_after_all_continuations_without_copying_dishes(self):
+        self.client.force_login(self.staff)
+        response = self.client.post(self.url, self.data, content_type='application/json')
+        self.assertEqual(response.status_code, 201)
+        page = MenuPage.objects.get(pk=response.json()['page']['id'])
+        self.assertEqual(page.heading, self.data['heading'])
+        self.assertEqual(page.content, self.data['content'])
+        self.assertEqual(page.layout, 'split')
+        self.assertEqual(page.dishes.count(), 0)
+        self.assertEqual(list(self.menu.pages.all()), [
+            self.front, self.category, self.continuation, page, self.next_category, self.back,
+        ])
+        blank = self.client.get(reverse('dish-list', args=[self.menu.pk, page.pk])).json()
+        self.assertEqual(blank['dish']['name'], '')
+        self.assertEqual(blank['category_slug'], page.slug)
+
+    def test_creation_accepts_front_cover_and_avoids_slug_collisions(self):
+        self.client.force_login(self.staff)
+        response = self.client.post(self.url, {
+            **self.data, 'name': 'Curry', 'after_page_id': self.front.pk,
+        }, content_type='application/json')
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()['page']['slug'], 'curry-to')
+        self.assertEqual(self.menu.pages.all()[1].pk, response.json()['page']['id'])
+        slugs = [page.slug for page in get_menu_pages(self.menu)]
+        self.assertEqual(len(slugs), len(set(slugs)))
+
+    def test_creation_works_for_an_empty_book(self):
+        self.menu.pages.exclude(pk__in=[self.front.pk, self.back.pk]).delete()
+        superuser = get_user_model().objects.create_user(username='empty-book-editor', is_superuser=True)
+        self.client.force_login(superuser)
+        response = self.client.post(self.url, {
+            **self.data, 'after_page_id': self.front.pk,
+        }, content_type='application/json')
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(self.menu.pages.count(), 3)
+        self.assertEqual(self.menu.pages.first(), self.front)
+        self.assertEqual(self.menu.pages.last(), self.back)
+
+    def test_delete_removes_category_continuations_and_dishes_but_keeps_neighbors(self):
+        self.client.force_login(self.staff)
+        Dish.objects.create(menu_page=self.continuation, name='Manual continuation dish')
+        preserved = Dish.objects.create(menu_page=self.next_category, name='Keep this dessert')
+        response = self.client.delete(reverse('delete-page', args=[self.menu.pk, self.continuation.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['category_slug'], self.next_category.slug)
+        self.assertEqual(list(self.menu.pages.all()), [self.front, self.next_category, self.back])
+        self.assertEqual(list(self.menu.pages.values_list('position', flat=True)), [0, 1, 2])
+        self.assertEqual(list(Dish.objects.filter(menu_page__menu=self.menu)), [preserved])
+        self.assertFalse(any(page.slug.startswith('curry') for page in get_menu_pages(self.menu)))
+
+    def test_delete_protects_covers_and_menu_scope_and_keeps_an_empty_book_addable(self):
+        superuser = get_user_model().objects.create_user(username='deleting-page-superuser', is_superuser=True)
+        self.client.force_login(superuser)
+        for cover in (self.front, self.back):
+            self.assertEqual(
+                self.client.delete(reverse('delete-page', args=[self.menu.pk, cover.pk])).status_code, 400,
+            )
+        other = Menu.objects.create(name='Other menu')
+        self.assertEqual(
+            self.client.delete(reverse('delete-page', args=[other.pk, self.category.pk])).status_code, 404,
+        )
+        self.assertEqual(
+            self.client.get(reverse('delete-page', args=[self.menu.pk, self.category.pk])).status_code, 405,
+        )
+        self.assertEqual(
+            self.client.delete(reverse('delete-page', args=[self.menu.pk, self.category.pk])).status_code, 200,
+        )
+        response = self.client.delete(reverse('delete-page', args=[self.menu.pk, self.next_category.pk]))
+        self.assertEqual(response.json()['category_slug'], self.front.slug)
+        self.assertEqual(list(self.menu.pages.all()), [self.front, self.back])
+        response = self.client.get('/')
+        self.assertContains(response, 'data-page-action="add"', count=1)
+        self.assertNotContains(response, 'data-page-action="delete"')
+
+    def test_invalid_creation_and_wrong_menu_do_not_change_any_pages(self):
+        self.client.force_login(self.staff)
+        for data in (
+            {}, [], {**self.data, 'name': True}, {**self.data, 'heading': ''},
+            {**self.data, 'layout': 'cover'}, {**self.data, 'after_page_id': True},
+            {**self.data, 'after_page_id': self.back.pk},
+        ):
+            self.assertEqual(self.client.post(self.url, data, content_type='application/json').status_code, 400)
+        self.assertEqual(self.client.post(self.url, 'invalid', content_type='application/json').status_code, 400)
+        self.assertEqual(self.client.post(self.url, self.data).status_code, 415)
+        other = Menu.objects.create(name='Other menu')
+        self.assertEqual(
+            self.client.post(reverse('menu-pages', args=[other.pk]), self.data, content_type='application/json').status_code,
+            404,
+        )
+        self.assertEqual(
+            self.client.post(reverse('move-page', args=[other.pk, self.category.pk]), {'direction': 'right'}).status_code,
+            404,
+        )
+        self.assertEqual(self.menu.pages.count(), 5)
+
+    def test_page_actions_require_staff_and_csrf(self):
+        ordinary = get_user_model().objects.create_user(username='page-reader')
+        for user, status in ((None, 401), (ordinary, 403)):
+            if user:
+                self.client.force_login(user)
+            self.assertEqual(self.client.post(self.url, self.data, content_type='application/json').status_code, status)
+            self.assertEqual(self.client.post(self.move_url, {'direction': 'right'}).status_code, status)
+            self.assertEqual(
+                self.client.delete(reverse('delete-page', args=[self.menu.pk, self.category.pk])).status_code,
+                status,
+            )
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(self.staff)
+        token = str(client.get('/').context['csrf_token'])
+        self.assertEqual(client.post(self.url, self.data, content_type='application/json').status_code, 403)
+        self.assertEqual(client.post(self.move_url, {'direction': 'right'}).status_code, 403)
+        self.assertEqual(client.post(
+            self.url, self.data, content_type='application/json', HTTP_X_CSRFTOKEN=token,
+        ).status_code, 201)
+        self.assertEqual(client.post(
+            self.move_url, {'direction': 'right'}, HTTP_X_CSRFTOKEN=token,
+        ).status_code, 200)
+        delete_url = reverse('delete-page', args=[self.menu.pk, self.category.pk])
+        self.assertEqual(client.delete(delete_url).status_code, 403)
+        self.assertEqual(client.delete(delete_url, HTTP_X_CSRFTOKEN=token).status_code, 200)
+
+    def test_staff_controls_use_category_boundaries_and_dish_plus_is_beside_heading(self):
+        for user in (None, get_user_model().objects.create_user(username='ordinary-page-reader'), self.staff):
+            if user:
+                self.client.force_login(user)
+            response = self.client.get('/')
+            self.assertNotContains(response, 'data-dish-add')
+            if user == self.staff:
+                self.assertContains(response, 'data-page-action="right"', count=3)
+                self.assertContains(response, 'data-page-action="left"', count=1)
+                self.assertContains(response, 'data-page-action="add"', count=5)
+                self.assertContains(response, 'data-page-action="delete"', count=4)
+                self.assertContains(response, '<use href="#cross" xlink:href="#cross">', count=4)
+                self.assertContains(response, 'data-dish-action="add"', count=2)
+                self.assertContains(response, 'title="Flytt Curry til høyre"', count=3)
+                self.assertContains(response, 'title="Legg til rett i Dessert"', count=1)
+                self.assertContains(response, f'data-create-url="{reverse("dish-list", args=[self.menu.pk, self.next_category.pk])}"')
+            else:
+                self.assertNotContains(response, 'data-page-action')
+                self.assertNotContains(response, 'data-dish-action="add"')
 
 
 @override_settings(FRONTEND_ENABLED=False)
@@ -537,7 +851,8 @@ class OptionalFrontendTests(TestCase):
     def test_django_page_renders_without_reading_a_disabled_frontend_manifest(self):
         with patch('meny.templatetags.rsbuild._load_manifest') as load_manifest:
             response = self.client.get('/')
-        self.assertContains(response, '<h1>Test menu</h1>', html=True)
+        self.assertContains(response, '<title>Test menu</title>', html=True)
+        self.assertNotContains(response, 'class="menu-heading')
         self.assertContains(response, "classList.replace('no-js', 'with-js')")
         self.assertNotContains(response, '<script defer')
         self.assertNotContains(response, 'rel="stylesheet"')
@@ -615,19 +930,20 @@ class MenuRenderingTests(TestCase):
         ]
         response = self.client.get(reverse('menu-pages', args=[menu.pk]))
         for dish in dishes:
-            for action, label in [
-                ('add', f'Legg til {dish.name} i handlekurven'),
-                ('remove', f'Fjern {dish.name} fra handlekurven'),
-            ]:
+            for action, label in [('add', f'Legg til {dish.name} i handlekurven')]:
+                disabled = 'disabled ' if dish.price is None else ''
+                price = dish.price if dish.price is not None else 'None'
                 self.assertContains(
                     response,
                     '<button class="cart-button cluster align-items:center justify-content:center" '
                     f'type="button" data-cart-action="{action}" data-dish-id="{dish.pk}" '
-                    f'aria-label="{label}"><svg class="icon" aria-hidden="true" focusable="false">'
+                    f'data-dish-name="{dish.name}" data-dish-price="{price}" {disabled}'
+                    f'aria-label="{label}" title="{label}"><svg class="icon" aria-hidden="true" focusable="false">'
                     f'<use href="#cart{action}" xlink:href="#cart{action}"></use></svg></button>',
                     html=True,
                 )
         self.assertContains(response, '<p class="menu-price">99 kr</p>', html=True)
+        self.assertNotContains(response, 'data-cart-action="remove"')
 
     @override_settings(FRONTEND_ENABLED=False)
     def test_fragment_uses_the_same_pages_template_and_reflects_saved_changes(self):
@@ -664,10 +980,10 @@ class MenuRenderingTests(TestCase):
         self.client.force_login(user)
         self.assertEqual(self.client.get(url).context['user'], user)
 
-    def test_fragment_is_get_only_and_unknown_menu_returns_404(self):
+    def test_fragment_rejects_unsupported_methods_and_unknown_menu_returns_404(self):
         menu = Menu.objects.create(name='Lunch')
         self.assertEqual(self.client.get(reverse('menu-pages', args=[menu.pk + 1])).status_code, 404)
-        self.assertEqual(self.client.post(reverse('menu-pages', args=[menu.pk])).status_code, 405)
+        self.assertEqual(self.client.put(reverse('menu-pages', args=[menu.pk])).status_code, 405)
 
     def test_index_renders_menu_data_in_turnpage_markup(self):
         menu = Menu.objects.create(
@@ -724,7 +1040,7 @@ class MenuRenderingTests(TestCase):
         self.assertContains(response, 'data-book-canvas')
         self.assertContains(response, 'data-book-pages')
         self.assertContains(response, 'data-toc="Innhold"')
-        self.assertContains(response, 'Utforsk vår indiske meny.')
+        self.assertNotContains(response, 'Utforsk vår indiske meny.')
         self.assertContains(response, 'class="slide cover-slide front-cover background-slide cover"')
         self.assertContains(response, 'class="front-cover-content stack"', count=1)
         self.assertContains(response, 'class="slide cover-slide back-cover"')
@@ -783,6 +1099,59 @@ class MenuPaginationTests(TestCase):
             layout='cover', position=10,
         )
 
+    def test_hidden_dishes_are_filtered_before_customer_pagination_but_remain_editable_for_staff(self):
+        dishes = [
+            Dish.objects.create(menu_page=self.category, name=f'Dish {index}', position=index,
+                                is_visible=index % 2 == 0, price='99.00')
+            for index in range(9)
+        ]
+        ordinary = get_user_model().objects.create_user(username='visibility-customer')
+        for user in (None, ordinary):
+            if user:
+                self.client.force_login(user)
+            else:
+                self.client.logout()
+            for url in ('/', reverse('menu-pages', args=[self.menu.pk])):
+                response = self.client.get(url)
+                for dish in dishes:
+                    if dish.is_visible:
+                        self.assertContains(response, f'<h3>{dish.name}</h3>', html=True)
+                    else:
+                        self.assertNotContains(response, dish.name)
+                self.assertContains(response, 'data-cart-action="add"', count=5)
+                self.assertNotContains(response, 'data-dish-action="visibility"')
+        pages = get_menu_pages(self.menu)[1:-1]
+        self.assertEqual([len(page.turnpage_dishes) for page in pages], [4, 1])
+        self.assertEqual(
+            [dish.pk for page in pages for dish in page.turnpage_dishes],
+            [dish.pk for dish in dishes if dish.is_visible],
+        )
+        for is_staff, is_superuser in ((True, False), (False, True)):
+            editor = get_user_model().objects.create_user(
+                username=f'visibility-editor-{is_staff}', is_staff=is_staff, is_superuser=is_superuser,
+            )
+            self.client.force_login(editor)
+            response = self.client.get(reverse('menu-pages', args=[self.menu.pk]))
+            self.assertContains(response, 'data-dish-action="visibility"', count=9)
+            self.assertContains(response, '<h3>Dish 1 (skjult)</h3>', html=True)
+            self.assertContains(response, 'aria-label="Vis Dish 1 for kunder"')
+            self.assertContains(response, 'aria-label="Skjul Dish 0 for kunder"')
+            for icon in ('eyeopen', 'eyedisabled'):
+                self.assertContains(response, f'<use href="#{icon}" xlink:href="#{icon}"></use>')
+
+    def test_hiding_a_parent_also_filters_independently_visible_manual_continuations(self):
+        self.category.is_visible = False
+        self.category.save()
+        manual = MenuPage.objects.create(
+            menu=self.menu, name='Manual curry', decorative_title='More curry',
+            is_continuation=True, position=2,
+        )
+        Dish.objects.create(menu_page=manual, name='Secret curry')
+        self.assertEqual([page.name for page in get_menu_pages(self.menu)], ['Front', 'Back'])
+        self.assertNotContains(self.client.get('/'), 'Secret curry')
+        self.assertNotContains(self.client.get(reverse('menu-pages', args=[self.menu.pk])), 'More curry')
+        self.assertEqual(len(get_menu_pages(self.menu, include_hidden=True)), 4)
+
     @override_settings(FRONTEND_ENABLED=False)
     def test_staff_and_superusers_get_edit_controls_across_automatic_continuations(self):
         dishes = [
@@ -830,7 +1199,7 @@ class MenuPaginationTests(TestCase):
                 with self.subTest(user=user, url=url):
                     response = self.client.get(url)
                     self.assertContains(response, 'data-cart-action="add"', count=1)
-                    self.assertContains(response, 'data-cart-action="remove"', count=1)
+                    self.assertNotContains(response, 'data-cart-action="remove"')
                     self.assertNotContains(response, 'data-dish-action')
 
     def test_staff_single_dish_has_edit_button_but_no_move_buttons(self):
@@ -1338,7 +1707,7 @@ class DjangoMountTests(TestCase):
         self.addCleanup(set_script_prefix, prefix)
         set_script_prefix('/django/')
         response = self.client.get('/')
-        self.assertContains(response, '<h1>Test menu</h1>', html=True)
+        self.assertContains(response, '<title>Test menu</title>', html=True)
         response = self.client.get('/admin/login/')
         self.assertContains(response, 'action="/django/admin/login/"')
 
@@ -1560,6 +1929,536 @@ class InternalAuthenticationTests(TestCase):
         self.assertIn('meny_csrftoken', response.cookies)
         self.assertEqual(response.cookies['meny_csrftoken']['path'], '/meny/')
         self.assertNotIn('csrftoken', response.cookies)
+
+
+@override_settings(FRONTEND_ENABLED=False, WS_INTERNAL_URL='', WS_INTERNAL_NOTIFY_TOKEN='')
+class OrderLoginTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        for username, flags in [
+            ('login-staff', {'is_staff': True}),
+            ('login-super', {'is_superuser': True}),
+            ('login-customer', {}),
+            ('login-inactive', {'is_staff': True, 'is_active': False}),
+        ]:
+            get_user_model().objects.create_user(
+                username=username, password='isolated-login-test-password', **flags,
+            )
+
+    def test_orders_redirect_to_a_dedicated_login_with_accessible_fields(self):
+        self.assertRedirects(
+            self.client.get('/orders/'), '/orders/login/?next=/orders/',
+            fetch_redirect_response=False,
+        )
+        response = self.client.get(reverse('orders-login'), {'next': '/orders/'})
+        self.assertContains(response, '<title>Logg inn · Bestillinger</title>', html=True)
+        self.assertContains(response, 'autocomplete="username"')
+        self.assertContains(response, 'autocomplete="current-password"')
+        self.assertContains(response, 'name="csrfmiddlewaretoken"')
+        self.assertContains(response, 'name="next" value="/orders/"')
+        self.assertContains(response, 'for="id_username"')
+        self.assertContains(response, 'for="id_password"')
+
+    def test_staff_and_non_staff_superusers_can_log_in(self):
+        for username in ['login-staff', 'login-super']:
+            with self.subTest(username=username):
+                self.client.logout()
+                response = self.client.post(reverse('orders-login'), {
+                    'username': username, 'password': 'isolated-login-test-password',
+                })
+                self.assertRedirects(response, reverse('orders'))
+                user = get_user_model().objects.get(username=username)
+                self.assertEqual(self.client.session['_auth_user_id'], str(user.pk))
+                self.assertEqual(self.client.get(reverse('order-list')).status_code, 200)
+
+    def test_invalid_non_staff_and_inactive_accounts_cannot_log_in(self):
+        for username, password in [
+            ('login-staff', 'wrong-password'),
+            ('login-customer', 'isolated-login-test-password'),
+            ('login-inactive', 'isolated-login-test-password'),
+        ]:
+            with self.subTest(username=username):
+                response = self.client.post(reverse('orders-login'), {
+                    'username': username, 'password': password,
+                })
+                self.assertEqual(response.status_code, 200)
+                self.assertTrue(response.context['form'].non_field_errors())
+                self.assertNotIn('_auth_user_id', self.client.session)
+                self.assertEqual(self.client.get(reverse('order-list')).status_code, 401)
+
+    def test_login_requires_csrf_and_rejects_an_external_next_url(self):
+        client = Client(enforce_csrf_checks=True)
+        url = reverse('orders-login')
+        data = {
+            'username': 'login-staff', 'password': 'isolated-login-test-password',
+            'next': 'https://example.com/orders/',
+        }
+        self.assertEqual(client.post(url, data).status_code, 403)
+        client.get(url)
+        token = client.cookies[settings.CSRF_COOKIE_NAME].value
+        response = client.post(url, data, HTTP_X_CSRFTOKEN=token)
+        self.assertRedirects(response, reverse('orders'), fetch_redirect_response=False)
+
+    def test_logout_ends_the_session_and_returns_to_the_order_login(self):
+        self.client.force_login(get_user_model().objects.get(username='login-staff'))
+        response = self.client.get(reverse('orders'))
+        self.assertContains(response, 'action="/orders/logout/"')
+        self.assertContains(response, '<button type="submit">Logg ut</button>', html=True)
+        url = reverse('orders-logout')
+        self.assertEqual(self.client.get(url).status_code, 405)
+        self.assertIn('_auth_user_id', self.client.session)
+        self.assertRedirects(self.client.post(url), reverse('orders-login'))
+        self.assertNotIn('_auth_user_id', self.client.session)
+        self.assertEqual(self.client.get(reverse('order-list')).status_code, 401)
+        self.assertRedirects(
+            self.client.get(reverse('orders')), '/orders/login/?next=/orders/',
+            fetch_redirect_response=False,
+        )
+
+    def test_logout_requires_csrf(self):
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(get_user_model().objects.get(username='login-staff'))
+        client.get(reverse('orders'))
+        url = reverse('orders-logout')
+        self.assertEqual(client.post(url).status_code, 403)
+        self.assertIn('_auth_user_id', client.session)
+        token = client.cookies[settings.CSRF_COOKIE_NAME].value
+        response = client.post(url, HTTP_X_CSRFTOKEN=token)
+        self.assertRedirects(response, reverse('orders-login'), fetch_redirect_response=False)
+        self.assertNotIn('_auth_user_id', client.session)
+
+    @override_settings(FORCE_SCRIPT_NAME='/django')
+    def test_order_login_respects_the_mount_prefix(self):
+        self.addCleanup(set_script_prefix, get_script_prefix())
+        set_script_prefix('/django/')
+        response = self.client.get('/orders/login/')
+        self.assertContains(response, 'action="/django/orders/login/"')
+        response = self.client.post('/orders/login/', {
+            'username': 'login-staff', 'password': 'isolated-login-test-password',
+        })
+        self.assertRedirects(response, '/django/orders/', fetch_redirect_response=False)
+        response = self.client.get('/orders/')
+        self.assertContains(response, 'action="/django/orders/logout/"')
+        response = self.client.post('/orders/logout/')
+        self.assertRedirects(response, '/django/orders/login/', fetch_redirect_response=False)
+
+
+class OrderingTests(TestCase):
+    def setUp(self):
+        self.menu = Menu.objects.create(pk=2, name='Dinner')
+        self.page = MenuPage.objects.create(
+            menu=self.menu, name='Mains', heading='Mains', decorative_title='Dinner',
+        )
+        self.dish = Dish.objects.create(menu_page=self.page, name='Curry', price='125.50')
+        self.staff = get_user_model().objects.create_user(username='orders-staff', is_staff=True)
+        self.url = reverse('create-order', args=[self.menu.pk])
+
+    def payload(self):
+        return {
+            'submission_id': str(uuid4()), 'customer_name': 'Test guest',
+            'phone': '+47 123 45 678', 'note': 'No cutlery',
+            'items': [{'dish_id': self.dish.pk, 'quantity': 2}],
+        }
+
+    def test_shop_status_is_public_but_only_staff_and_superusers_can_change_it(self):
+        url = reverse('shop-status')
+        response = self.client.get(url)
+        self.assertTrue(response.json()['is_open'])
+        self.assertIn('no-store', response['Cache-Control'])
+        data = {'is_open': False, 'expected_is_open': True}
+        self.assertEqual(self.client.patch(url, data, content_type='application/json').status_code, 401)
+        ordinary = get_user_model().objects.create_user(username='shop-customer')
+        self.client.force_login(ordinary)
+        self.assertEqual(self.client.patch(url, data, content_type='application/json').status_code, 403)
+        superuser = get_user_model().objects.create_user(username='shop-super', is_superuser=True)
+        for user in [self.staff, superuser]:
+            with self.subTest(user=user):
+                ShopStatus.objects.filter(pk=1).update(is_open=True)
+                self.client.force_login(user)
+                self.assertEqual(self.client.patch(url, data, content_type='application/json').status_code, 200)
+                self.assertFalse(Client().get(url).json()['is_open'])
+        self.assertContains(Client().get('/'), 'data-shop-open="false"')
+        self.assertEqual(ShopStatus.objects.count(), 1)
+
+    def test_shop_changes_require_csrf_boolean_fields_and_the_expected_current_state(self):
+        url = reverse('shop-status')
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(self.staff)
+        client.get('/')
+        data = {'is_open': False, 'expected_is_open': True}
+        self.assertEqual(client.patch(url, data, content_type='application/json').status_code, 403)
+        token = client.cookies[settings.CSRF_COOKIE_NAME].value
+        self.assertEqual(client.patch(
+            url, data, content_type='application/json', HTTP_X_CSRFTOKEN=token,
+        ).status_code, 200)
+        self.assertEqual(client.patch(
+            url, data, content_type='application/json', HTTP_X_CSRFTOKEN=token,
+        ).status_code, 409)
+        self.client.force_login(self.staff)
+        for invalid in [
+            {}, {'is_open': 'true', 'expected_is_open': False},
+            {'is_open': 1, 'expected_is_open': False},
+            {'is_open': True, 'expected_is_open': False, 'extra': True},
+        ]:
+            with self.subTest(data=invalid):
+                self.assertEqual(self.client.patch(url, invalid, content_type='application/json').status_code, 400)
+        self.assertFalse(ShopStatus.objects.get(pk=1).is_open)
+
+    @override_settings(WS_INTERNAL_URL='http://127.0.0.1:8002/', WS_INTERNAL_NOTIFY_TOKEN='test-only')
+    def test_shop_changes_publish_only_public_hints_after_commit(self):
+        self.client.force_login(self.staff)
+        url = reverse('shop-status')
+        with patch('meny.orders.notify.run') as delivery:
+            for is_open in [False, True]:
+                with self.captureOnCommitCallbacks(execute=True):
+                    response = self.client.patch(
+                        url, {'is_open': is_open, 'expected_is_open': not is_open},
+                        content_type='application/json',
+                    )
+                    self.assertEqual(response.status_code, 200)
+                    delivery.assert_not_called()
+                delivery.assert_called_once_with({}, 'public:shop', 'shop.changed')
+                delivery.reset_mock()
+            with self.captureOnCommitCallbacks(execute=True):
+                self.client.patch(
+                    url, {'is_open': True, 'expected_is_open': True}, content_type='application/json',
+                )
+                self.client.patch(
+                    url, {'is_open': True, 'expected_is_open': False}, content_type='application/json',
+                )
+            delivery.assert_not_called()
+        with patch('meny.orders.notify.run', side_effect=RuntimeError('test-only failure')):
+            with self.assertLogs('meny.orders', level='WARNING'), self.captureOnCommitCallbacks(execute=True):
+                response = self.client.patch(
+                    url, {'is_open': False, 'expected_is_open': True}, content_type='application/json',
+                )
+            self.assertEqual(response.status_code, 200)
+            self.assertFalse(ShopStatus.objects.get(pk=1).is_open)
+
+    def test_closed_shop_rejects_new_orders_but_preserves_receipts_and_existing_order_management(self):
+        original = self.payload()
+        order_id = self.place(original).json()['order']['id']
+        ShopStatus.objects.filter(pk=1).update(is_open=False)
+        new = self.payload()
+        response = self.place(new)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()['error'], 'shop_closed')
+        self.assertFalse(response.json()['is_open'])
+        self.assertEqual(Order.objects.count(), 1)
+        self.assertEqual(self.place(original).json()['order']['id'], order_id)
+        self.assertEqual(Order.objects.count(), 1)
+        self.assertEqual(self.client.get(reverse('customer-orders')).json()['results'][0]['id'], order_id)
+        self.client.force_login(self.staff)
+        response = self.client.patch(
+            reverse('order-status', args=[order_id]),
+            {'status': 'preparing', 'expected_status': 'new'}, content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        response = self.client.patch(
+            reverse('shop-status'), {'is_open': True, 'expected_is_open': False},
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.place(new).status_code, 201)
+        self.assertEqual(Order.objects.count(), 2)
+
+    def place(self, data=None, client=None):
+        return (client or self.client).post(self.url, data or self.payload(), content_type='application/json')
+
+    def test_guest_checkout_stores_authoritative_price_and_durable_snapshots(self):
+        data = self.payload()
+        response = self.place(data)
+        self.assertEqual(response.status_code, 201)
+        order = Order.objects.get()
+        self.assertEqual(response.json(), {'order': {'id': order.pk, 'total': '251.00', 'currency': 'NOK'}})
+        self.assertEqual(order.customer_name, data['customer_name'])
+        self.assertEqual(order.phone, data['phone'])
+        self.assertEqual(order.note, data['note'])
+        self.assertEqual(order.status, Order.Status.NEW)
+        self.dish.name = 'Renamed'
+        self.dish.price = '999.00'
+        self.dish.save()
+        self.assertEqual(order.items.get().name, 'Curry')
+        self.assertEqual(str(order.items.get().unit_price), '125.50')
+        self.menu.delete()
+        order.refresh_from_db()
+        self.assertIsNone(order.menu_id)
+        self.assertEqual(order.menu_name, 'Dinner')
+        self.assertIsNone(order.items.get().dish_id)
+        self.assertEqual(str(order.total), '251.00')
+        self.assertIn('no-store', response['Cache-Control'])
+
+    def test_retry_after_lost_response_reuses_order_even_if_menu_was_deleted(self):
+        data = self.payload()
+        first = self.place(data)
+        self.menu.delete()
+        retry = self.place(data)
+        self.assertEqual(retry.status_code, 200)
+        self.assertEqual(first.json(), retry.json())
+        self.assertEqual(Order.objects.count(), 1)
+        data['note'] = 'Different order'
+        self.assertEqual(self.place(data).status_code, 409)
+        self.assertEqual(Order.objects.count(), 1)
+
+    def test_invalid_inputs_and_client_price_overrides_do_not_create_orders(self):
+        other_menu = Menu.objects.create(name='Other')
+        other_page = MenuPage.objects.create(
+            menu=other_menu, name='Other', heading='Other', decorative_title='Other',
+        )
+        other_dish = Dish.objects.create(menu_page=other_page, name='Other', price='1.00')
+        cases = [
+            {'customer_name': ''}, {'customer_name': 'x' * 151}, {'customer_name': 5},
+            {'phone': 'abc'}, {'phone': '123'}, {'phone': '1' * 33}, {'note': 'x' * 2001},
+            {'submission_id': 'invalid'}, {'submission_id': 123},
+            {'total': '0.01'}, {'status': 'completed'},
+            {'items': []}, {'items': {}},
+            {'items': [{'dish_id': self.dish.pk, 'quantity': True}]},
+            {'items': [{'dish_id': self.dish.pk, 'quantity': 0}]},
+            {'items': [{'dish_id': self.dish.pk, 'quantity': 100}]},
+            {'items': [{'dish_id': True, 'quantity': 1}]},
+            {'items': [{'dish_id': 2**64, 'quantity': 1}]},
+            {'items': [{'dish_id': other_dish.pk, 'quantity': 1}]},
+            {'items': [{'dish_id': self.dish.pk, 'quantity': 1, 'price': '0.01'}]},
+            {'items': [{'dish_id': self.dish.pk, 'quantity': 1}] * 2},
+        ]
+        for changes in cases:
+            with self.subTest(changes=changes):
+                self.assertEqual(self.place({**self.payload(), **changes}).status_code, 400)
+        self.assertEqual(self.client.post(self.url, 'bad', content_type='application/json').status_code, 400)
+        self.assertEqual(self.client.post(self.url, 'null', content_type='application/json').status_code, 400)
+        self.assertEqual(self.client.post(self.url, {}).status_code, 415)
+        self.assertEqual(self.client.post(self.url, 'x' * 17000, content_type='application/json').status_code, 413)
+        self.assertEqual(Order.objects.count(), 0)
+
+    def test_unavailable_and_unpriced_dishes_rejected_but_free_dishes_allowed(self):
+        for price in (None, '-1.00'):
+            self.dish.price = price
+            self.dish.save()
+            self.assertEqual(self.place().status_code, 400)
+        self.dish.price = '0.00'
+        self.dish.save()
+        self.assertEqual(self.place().json()['order']['total'], '0.00')
+        data = self.payload()
+        self.dish.delete()
+        self.assertEqual(self.place(data).status_code, 400)
+
+    def test_hidden_dishes_and_categories_reject_old_baskets_without_breaking_receipt_retries(self):
+        data = self.payload()
+        original = self.place(data)
+        self.assertEqual(original.status_code, 201)
+        self.dish.is_visible = False
+        self.dish.save()
+        self.assertEqual(self.place().status_code, 400)
+        self.assertEqual(self.place(data).json(), original.json())
+        self.dish.is_visible = True
+        self.dish.save()
+        continuation = MenuPage.objects.create(
+            menu=self.menu, name='More mains', decorative_title='More', is_continuation=True, position=1,
+        )
+        extra = Dish.objects.create(menu_page=continuation, name='Extra curry', price='99.00')
+        self.page.is_visible = False
+        self.page.save()
+        self.assertEqual(self.place().status_code, 400)
+        extra_data = {**self.payload(), 'items': [{'dish_id': extra.pk, 'quantity': 1}]}
+        self.assertEqual(self.place(extra_data).status_code, 400)
+        self.assertEqual(self.place(data).json(), original.json())
+        self.assertEqual(Order.objects.count(), 1)
+        self.page.is_visible = True
+        self.page.save()
+        self.assertEqual(self.place(extra_data).status_code, 201)
+
+    def test_csrf_required_for_guest_checkout_and_staff_status_changes(self):
+        client = Client(enforce_csrf_checks=True)
+        self.assertEqual(self.place(client=client).status_code, 403)
+        page = client.get('/')
+        self.assertContains(page, 'data-cart-open')
+        token = client.cookies[settings.CSRF_COOKIE_NAME].value
+        response = client.post(self.url, self.payload(), content_type='application/json', HTTP_X_CSRFTOKEN=token)
+        self.assertEqual(response.status_code, 201)
+        client.force_login(self.staff)
+        url = reverse('order-status', args=[response.json()['order']['id']])
+        body = {'status': 'preparing', 'expected_status': 'new'}
+        self.assertEqual(client.patch(url, body, content_type='application/json').status_code, 403)
+        self.assertEqual(
+            client.patch(url, body, content_type='application/json', HTTP_X_CSRFTOKEN=token).status_code, 200,
+        )
+
+    def test_order_data_and_management_are_staff_only_including_superusers(self):
+        order_id = self.place().json()['order']['id']
+        list_url = reverse('order-list')
+        status_url = reverse('order-status', args=[order_id])
+        ordinary = get_user_model().objects.create_user(username='order-customer')
+        superuser = get_user_model().objects.create_user(username='order-super', is_superuser=True)
+        self.assertRedirects(self.client.get('/orders'), '/orders/', status_code=301, fetch_redirect_response=False)
+        self.assertRedirects(
+            self.client.get('/orders/'), '/orders/login/?next=/orders/', fetch_redirect_response=False,
+        )
+        for user, status in [(None, 401), (ordinary, 403), (self.staff, 200), (superuser, 200)]:
+            if user:
+                self.client.force_login(user)
+            else:
+                self.client.logout()
+            with self.subTest(user=user):
+                response = self.client.get(list_url)
+                self.assertEqual(response.status_code, status)
+                self.assertIn('no-store', response['Cache-Control'])
+                self.assertEqual(self.client.get('/orders/').status_code, 302 if user is None else status)
+                self.assertEqual(
+                    self.client.patch(status_url, {'status': 'new', 'expected_status': 'new'},
+                                      content_type='application/json').status_code, status,
+                )
+                if status != 200:
+                    self.assertNotContains(response, 'Test guest', status_code=status)
+
+    def test_status_workflow_cancellation_and_stale_updates(self):
+        order_id = self.place().json()['order']['id']
+        url = reverse('order-status', args=[order_id])
+        self.client.force_login(self.staff)
+        def update(status, expected):
+            return self.client.patch(url, {'status': status, 'expected_status': expected},
+                                     content_type='application/json')
+        self.assertEqual(update('completed', 'new').status_code, 409)
+        self.assertEqual(update('preparing', 'new').status_code, 200)
+        self.assertEqual(update('ready', 'new').status_code, 409)
+        self.assertEqual(update('ready', 'preparing').status_code, 200)
+        self.assertEqual(update('completed', 'ready').status_code, 200)
+        self.assertEqual(update('cancelled', 'completed').status_code, 409)
+        self.assertEqual(update('new', 'completed').status_code, 409)
+        self.assertEqual(update('completed', 'ready').status_code, 200)
+        self.assertEqual(self.client.get(reverse('order-list')).json()['count'], 0)
+        completed = self.client.get(reverse('order-list'), {'status': 'completed'}).json()['results'][0]
+        self.assertEqual(completed['next_statuses'], [])
+        self.assertEqual(completed['items'][0]['total'], '251.00')
+        for status in ('new', 'preparing', 'ready'):
+            self.place()
+            order = Order.objects.first()
+            Order.objects.filter(pk=order.pk).update(status=status)
+            response = self.client.patch(reverse('order-status', args=[order.pk]),
+                                         {'status': 'cancelled', 'expected_status': status},
+                                         content_type='application/json')
+            self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.client.get(reverse('order-list'), {'status': 'all'}).json()['count'], 4)
+        self.assertEqual(self.client.get(reverse('order-list'), {'status': 'bad'}).status_code, 400)
+        self.assertEqual(self.client.get(reverse('order-list'), {'page': 'bad'}).status_code, 400)
+        self.assertEqual(update([], 'completed').status_code, 400)
+
+    @override_settings(WS_INTERNAL_URL='http://127.0.0.1:8002/', WS_INTERNAL_NOTIFY_TOKEN='test-only')
+    def test_committed_orders_notify_active_staff_and_own_customer_without_contact_details(self):
+        superuser = get_user_model().objects.create_user(username='notify-super', is_superuser=True)
+        get_user_model().objects.create_user(username='not-staff')
+        get_user_model().objects.create_user(username='inactive-staff', is_staff=True, is_active=False)
+        with patch('meny.orders.notify.run') as delivery:
+            with self.captureOnCommitCallbacks(execute=True):
+                order_id = self.place().json()['order']['id']
+                delivery.assert_not_called()
+            channel = f'orders:{Order.objects.get(pk=order_id).customer_channel}'
+            self.assertEqual(
+                {call.args[1] for call in delivery.call_args_list},
+                {self.staff.pk, superuser.pk, channel},
+            )
+            for call in delivery.call_args_list:
+                self.assertEqual(call.args[0], {'order_id': order_id})
+                self.assertEqual(call.args[2], 'orders.changed')
+            delivery.reset_mock()
+            self.client.force_login(self.staff)
+            with self.captureOnCommitCallbacks(execute=True):
+                self.client.patch(reverse('order-status', args=[order_id]),
+                                  {'status': 'preparing', 'expected_status': 'new'},
+                                  content_type='application/json')
+            self.assertEqual(delivery.call_count, 3)
+
+    def test_customer_status_is_private_to_browser_session_and_survives_reload(self):
+        self.client.get('/')
+        channel = self.client.session['order_channel']
+        own_id = self.place().json()['order']['id']
+        other = Client()
+        other.get('/')
+        other_id = self.place(client=other).json()['order']['id']
+        self.assertNotEqual(channel, other.session['order_channel'])
+        url = reverse('customer-orders')
+        response = self.client.get(url, {'order_id': other_id, 'customer_channel': other.session['order_channel']})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('no-store', response['Cache-Control'])
+        own = response.json()['results']
+        self.assertEqual([order['id'] for order in own], [own_id])
+        self.assertEqual(set(own[0]), {'id', 'status', 'status_label', 'updated_at'})
+        self.assertEqual(own[0]['status'], 'new')
+        self.assertNotContains(response, channel)
+        self.assertNotContains(response, 'Test guest')
+        self.assertNotContains(response, '+47 123 45 678')
+        self.assertEqual([order['id'] for order in other.get(url).json()['results']], [other_id])
+        self.assertEqual(Client().get(url).json(), {'results': []})
+        self.client.get('/')
+        self.assertEqual(self.client.session['order_channel'], channel)
+        Order.objects.filter(pk=own_id).update(status='ready')
+        self.assertEqual(self.client.get(url).json()['results'][0]['status_label'], 'Klar')
+        self.client.logout()
+        self.assertEqual(self.client.get(url).json(), {'results': []})
+
+    def test_lost_checkout_response_uses_the_session_established_before_checkout(self):
+        self.client.get('/')
+        channel = self.client.session['order_channel']
+        data = self.payload()
+        self.place(data)
+        self.place(data)
+        self.assertEqual(str(Order.objects.get().customer_channel), channel)
+        self.assertEqual(len(self.client.get(reverse('customer-orders')).json()['results']), 1)
+
+    def test_customer_status_includes_all_unfinished_orders_and_recent_completion_of_an_old_order(self):
+        self.client.get('/')
+        channel = self.client.session['order_channel']
+        orders = Order.objects.bulk_create([
+            Order(
+                menu=self.menu, menu_name=self.menu.name, submission_id=uuid4(),
+                request_fingerprint='test', customer_channel=channel,
+                customer_name='Test guest', phone='12345678', total='1.00',
+                status=Order.Status.NEW if index < 30 else Order.Status.COMPLETED,
+            )
+            for index in range(60)
+        ])
+        url = reverse('customer-orders')
+        results = self.client.get(url).json()['results']
+        self.assertTrue({order.pk for order in orders[:30]}.issubset({order['id'] for order in results}))
+        self.assertEqual(sum(order['status'] == 'completed' for order in results), 25)
+        oldest = orders[0]
+        oldest.status = Order.Status.COMPLETED
+        oldest.save(update_fields=['status', 'updated_at'])
+        results = self.client.get(url).json()['results']
+        self.assertIn(
+            {'id': oldest.pk, 'status': 'completed', 'status_label': 'Fullført',
+             'updated_at': oldest.updated_at.isoformat()},
+            results,
+        )
+        self.assertTrue({order.pk for order in orders[1:30]}.issubset({order['id'] for order in results}))
+        self.assertEqual(Client().get(url).json(), {'results': []})
+
+    @override_settings(INTERNAL_AUTH_TOKEN='test-only-auth')
+    def test_customer_socket_auth_requires_service_token_and_an_existing_session(self):
+        url = reverse('customer-order-auth')
+        headers = {'HTTP_AUTHORIZATION': 'Bearer test-only-auth'}
+        self.assertEqual(self.client.get(url).status_code, 403)
+        self.assertEqual(Client().get(url, **headers).status_code, 401)
+        self.client.get('/')
+        channel = self.client.session['order_channel']
+        response = self.client.get(url, **headers)
+        self.assertEqual(response.json(), {'user_id': f'orders:{channel}'})
+        self.assertIn('no-store', response['Cache-Control'])
+        self.assertEqual(self.client.post(url, **headers).status_code, 405)
+        self.assertEqual(self.client.get(url, HTTP_AUTHORIZATION='Bearer wrong').status_code, 403)
+        self.client.logout()
+        self.assertEqual(self.client.get(url, **headers).status_code, 401)
+        with override_settings(INTERNAL_AUTH_TOKEN=''):
+            self.assertEqual(self.client.get(url, **headers).status_code, 503)
+
+    @override_settings(WS_INTERNAL_URL='http://127.0.0.1:8002/', WS_INTERNAL_NOTIFY_TOKEN='test-only')
+    def test_notification_failure_does_not_lose_or_duplicate_order(self):
+        data = self.payload()
+        with patch('meny.orders.notify.run', side_effect=OSError('offline')):
+            with self.assertLogs('meny.orders', level='WARNING'), self.captureOnCommitCallbacks(execute=True):
+                self.assertEqual(self.place(data).status_code, 201)
+            self.assertEqual(self.place(data).status_code, 200)
+        self.assertEqual(Order.objects.count(), 1)
+        self.assertEqual(OrderItem.objects.count(), 1)
 
 
 class FrontendReloadTests(SimpleTestCase):

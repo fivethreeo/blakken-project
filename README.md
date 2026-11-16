@@ -158,14 +158,109 @@ view, including across automatic continuation pages. Moves are saved in Django
 and refresh the reader in place. Edit opens a page-styled Imposter dialog for
 the dish's name, description, optional price and allergens. The editor uses
 hand-authored HTML and JSON `GET`/`PATCH` requests to
-`/menus/<menu_id>/dishes/<dish_id>/`, not Django forms. The top `Legg til`
-button opens a blank dish in the same category, saved with JSON `POST` to
-`/menus/<menu_id>/pages/<page_id>/dishes/`. `Slett` requires confirmation inside
+`/menus/<menu_id>/dishes/<dish_id>/`, not Django forms. The plus beside the large
+category heading opens a blank dish, including in empty categories. JSON `GET`
+to `/menus/<menu_id>/pages/<page_id>/dishes/` provides the blank fields and
+allergen choices; `POST` saves it. The dish editor has no Add button.
+`Slett` requires confirmation inside
 the editor before sending `DELETE` to the dish endpoint. Creation and deletion
 reload the category to rebuild continuation pages and padding. All mutations
 require a staff or superuser session and CSRF token. Saving edits refreshes the reader in place;
 if the edited content no longer fits the captured page dimensions, it reloads
 the book automatically to recalculate its size.
+
+The staff page toolbar uses left/right arrows to move a category together with
+its manual and automatic continuations, keeping covers fixed. The top plus
+opens a blank page editor and inserts a new category after the current category
+and its continuations. The front cover's plus can insert the first category.
+The cross requires confirmation before deleting the category, continuation pages
+and their dishes; covers cannot be deleted. Page changes reload the book to
+rebuild pagination and contents. These actions use staff/superuser and
+CSRF-protected REST endpoints: `POST /menus/<menu_id>/pages/`,
+`POST /menus/<menu_id>/pages/<page_id>/move/`, and
+`DELETE /menus/<menu_id>/pages/<page_id>/`.
+Icon buttons have native `title` tooltips, retained by book overlays. All editing
+controls remain hidden without JavaScript.
+Staff can use the eye icons (**Skjul / Vis**) on pages and dishes to hide them from customers
+without deleting them. A page toggle includes its manual and automatic
+continuations; covers stay fixed and cannot be toggled in the reader.
+Hidden entries remain visible and marked in the staff book for re-enabling.
+Customer pagination and contents omit hidden entries, and checkout rejects
+hidden dishes and dishes on hidden pages, including from old baskets.
+Dish visibility uses the existing JSON `PATCH` endpoint with boolean
+`is_visible`; pages use `PATCH /menus/<menu_id>/pages/<page_id>/visibility/`.
+Both require staff/superuser access and CSRF. Visibility can also be edited
+in the nested Django admin.
+Initial hash restoration is immediate, so returning after edits, moves,
+additions, deletions or a dimension-rebuild reload does not animate from the
+front cover. Normal reader navigation still animates.
+
+## Ordering
+
+The menu opens directly on the book, without an extra heading above it. A fixed
+bottom-right cart button opens compact modal checkout without leaving the book.
+Guests can add priced dishes, adjust quantities using cartadd/cartremove, remove
+a complete row using cross, and submit their name, phone number and optional note.
+Brief, nonblocking flash messages explain the controls and confirm basket actions.
+Order confirmation stays in a separate order-status modal until it is closed.
+Basket contents survive reloads in browser
+storage; customer contact details are not stored there. There is no online
+payment or phone confirmation yet.
+
+`POST /menus/<menu_id>/orders/` accepts JSON containing `submission_id` (a UUID),
+`customer_name`, `phone`, `note`, and `items` (`dish_id` and `quantity` only).
+CSRF is required even for guests. Django validates quantities and availability,
+calculates prices from the database, and stores names and prices as historical
+snapshots. Retrying the same submission ID and payload returns the original
+order instead of creating duplicates.
+
+Staff/superusers use `/orders/` (ordinary users cannot access it). Visitors are
+redirected to `/orders/login/` to sign in with an existing staff/superuser account.
+The toolbar's **Logg ut** button ends the session and returns to the order login.
+Staff can use **Steng butikken / Åpne butikken** to persistently close or open
+ordering across the shop. The default is open. Visitors get a dismissible
+30-second availability notice on entry. Open pages receive a live notice when
+the shop closes or reopens, through the public `/shop/` WebSocket channel.
+Availability is also checked every 30 seconds, on reconnection, and when returning
+to the tab. While closed, checkout is disabled
+and the server rejects new orders, including from previously opened pages.
+Basket contents and existing order management/status updates remain available.
+Retries of an already-saved order still return its receipt while closed.
+`GET /shop/status/` is public; staff-only, CSRF-protected `PATCH` requires boolean
+`is_open` and `expected_is_open` values, rejecting stale changes with HTTP 409.
+Active orders are shown by default; the filter also exposes completed/cancelled history, with 25 orders
+per page. Statuses progress **new → preparing → ready → completed**;
+non-completed orders can be cancelled. Updates check the expected prior status
+to prevent staff from overwriting one another.
+
+Live updates reuse the existing session-authenticated WebSocket service:
+configure `DJANGO_TS_WS_BACKEND_URL`, `DJANGO_INTERNAL_URL`,
+`DJANGO_INTERNAL_AUTH_TOKEN`, `WS_ALLOWED_ORIGINS`, `WS_INTERNAL_URL`, and
+`WS_INTERNAL_NOTIFY_TOKEN` as described below. The Django and WS processes must
+share the respective service tokens. After a database commit, Django sends an
+`orders.changed` hint to active staff users' sockets; no customer details travel
+in the event. Delivery is best-effort and does not require a Celery worker.
+The dashboard fetches order data through staff-protected HTTP endpoints,
+reconnects automatically, and reconciles every 30 seconds to recover missed
+events. If WebSockets are unavailable, stored orders remain accessible.
+
+Customers who keep the menu open see a separate order-status modal whenever a known status changes.
+If it has been closed, it reopens; an already-open modal updates in place.
+All unfinished orders are tracked, including concurrent orders, with a prominent
+current status and a short explanation for each. Changed orders are shown first.
+Completion and cancellation updates remain visible until the modal is dismissed;
+previously finished orders are not shown or replayed. The status API includes all
+unfinished orders plus the 25 most recently updated finished orders for reconciliation.
+No separate panel is added around the book. The panel survives reloads in the
+same browser session; its first load does not replay old popups. A server-side
+session channel scopes both `GET /orders/mine/` and the `/orders/` path on the
+WebSocket service to that customer's orders. The private WebSocket handshake
+uses `/internal/order-auth/` with the existing service token. No channel IDs or
+customer contact details are exposed in the browser's status responses.
+Reconnection, page visibility changes and 30-second reconciliation recover
+missed updates; changes detected after reconnect also trigger the popup.
+
+Apply the schema with `python run.py manage migrate` before accepting orders.
 
 ## Refreshing menu content
 

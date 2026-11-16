@@ -2,7 +2,7 @@ from copy import copy
 
 from django import template
 
-from meny.models import ALLERGEN_CHOICES, PAGE_SLUG_SUFFIXES, Menu, MenuPage, unique_page_slug
+from meny.models import ALLERGEN_CHOICES, PAGE_SLUG_SUFFIXES, Menu, MenuPage, menu_page_groups, unique_page_slug, visible_menu_pages
 
 register = template.Library()
 
@@ -13,15 +13,44 @@ def get_menu_by_id(menu_id):
 
 
 @register.simple_tag
-def get_menu_pages(menu):
+def get_menu_pages(menu, include_hidden=False):
     authored = list(menu.pages.all())
+    visible_ids = {page.pk for page in visible_menu_pages(authored)}
     reserved = {page.slug for page in authored}
     authored_slugs = reserved.copy()
+    groups = menu_page_groups(authored)
+    category_controls = {}
+    for index, group in enumerate(groups):
+        movable = group[0].layout != MenuPage.Layout.COVER
+        for member in group:
+            category_controls[member.pk] = (
+                group[0],
+                movable and index > 0 and groups[index - 1][0].layout != MenuPage.Layout.COVER,
+                movable and index + 1 < len(groups) and groups[index + 1][0].layout != MenuPage.Layout.COVER,
+            )
+    if not include_hidden:
+        authored = [page for page in authored if page.pk in visible_ids]
     pages = []
     for index, original in enumerate(authored):
         page = copy(original)
         page.turnpage_key = str(page.pk)
-        page.turnpage_dishes = tuple(original.dishes.all())
+        category, move_left, move_right = category_controls.get(original.pk, (original, False, False))
+        page.turnpage_category_id = category.pk
+        page.turnpage_category_slug = category.slug
+        page.turnpage_category_name = category.name
+        page.turnpage_category_visible = category.is_visible
+        page.turnpage_visible = original.pk in visible_ids
+        page.turnpage_move_left = move_left
+        page.turnpage_move_right = move_right
+        page.turnpage_can_add_page = index < len(authored) - 1 and (
+            index == 0 or page.layout != MenuPage.Layout.COVER
+        )
+        page.turnpage_can_add_dish = (
+            index not in (0, len(authored) - 1) and page.layout != MenuPage.Layout.COVER
+        )
+        page.turnpage_dishes = tuple(
+            dish for dish in original.dishes.all() if include_hidden or dish.is_visible
+        )
         page.turnpage_first_dish_id = page.turnpage_dishes[0].pk if page.turnpage_dishes else None
         page.turnpage_last_dish_id = page.turnpage_dishes[-1].pk if page.turnpage_dishes else None
         pages.append(page)

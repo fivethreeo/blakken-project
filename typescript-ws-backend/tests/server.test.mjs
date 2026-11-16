@@ -77,6 +77,8 @@ test('rejects untrusted origins and unknown upgrade paths before contacting Djan
   for (const [path, origin, cookie, status, expectedCalls] of [
     ['/', undefined, 'valid', 403, 0],
     ['/', 'https://untrusted.example', 'valid', 403, 0],
+    ['/shop/', undefined, 'valid', 403, 0],
+    ['/shop/', 'https://untrusted.example', 'valid', 403, 0],
     ['/missing', 'https://app.example', 'valid', 404, 0],
   ]) {
     const socket = new WebSocket(`ws://${address}${path}`, {
@@ -181,6 +183,134 @@ test('internal notifications reach all matching user connections but not other u
     assert.equal(data.toString(), 'echo-barrier');
     assert.deepEqual(excludedMessages[index], ['echo-barrier']);
   }
+});
+
+test('customer order sockets use private session channels and never receive another customer or staff notification', async (t) => {
+  const calls = [];
+  const django = await listen(t, createServer((request, response) => {
+    calls.push({ path: request.url, cookie: request.headers.cookie, token: request.headers.authorization });
+    const cookie = request.headers.cookie;
+    if (request.url === '/django/internal/order-auth/' && ['meny_sessionid=guest-a', 'meny_sessionid=guest-b'].includes(cookie)) {
+      response.end(JSON.stringify({ user_id: `orders:${cookie.split('=')[1]}` }));
+    } else {
+      response.writeHead(401);
+      response.end('{}');
+    }
+  }));
+  const { address, sockets } = await backend(t, {
+    djangoUrl: `http://${django}/django/`,
+    serviceToken: 'test-only-service-token',
+    sessionCookieName: 'meny_sessionid',
+    notifyToken: 'test-only-notify-token',
+    allowedOrigins: ['https://app.example'],
+  });
+  const clients = [];
+  for (const [path, cookie, identity] of [
+    ['/orders/', 'guest-a', 'orders:guest-a'],
+    ['/orders/', 'guest-b', 'orders:guest-b'],
+    ['/', 'guest-a', null],
+  ]) {
+    const accepted = once(sockets, 'connection');
+    const client = new WebSocket(`ws://${address}${path}`, {
+      origin: 'https://app.example',
+      headers: { Cookie: `sessionid=unrelated; meny_sessionid=${cookie}` },
+    });
+    await once(client, 'open');
+    assert.equal((await accepted)[0].userId, identity);
+    clients.push(client);
+  }
+  assert.deepEqual(calls.map(call => call.path), [
+    '/django/internal/order-auth/', '/django/internal/order-auth/', '/django/internal/auth/',
+  ]);
+  assert.ok(calls.every(call => call.token === 'Bearer test-only-service-token'));
+  assert.ok(calls.every(call => call.cookie.startsWith('meny_sessionid=')));
+  const received = clients.map(() => []);
+  clients.forEach((client, index) => client.on('message', data => received[index].push(JSON.parse(data.toString()))));
+  for (const [target, expected] of [['orders:guest-a', 1], ['orders:guest-b', 1], [42, 0]]) {
+    const event = expected ? once(clients[target === 'orders:guest-a' ? 0 : 1], 'message') : null;
+    const result = await fetch(`http://${address}/internal/notify/`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer test-only-notify-token', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: target, event: 'orders.changed', result: { order_id: 7 } }),
+    });
+    assert.deepEqual(await result.json(), { matched_connections: expected });
+    if (event) await event;
+  }
+  for (const client of clients) {
+    const echoed = once(client, 'message');
+    client.send(JSON.stringify({ barrier: true }));
+    await echoed;
+  }
+  assert.deepEqual(received.map(messages => messages.filter(message => message.event === 'orders.changed').length), [1, 1, 0]);
+  for (const cookie of [undefined, 'expired']) {
+    const client = new WebSocket(`ws://${address}/orders/`, {
+      origin: 'https://app.example',
+      headers: cookie ? { Cookie: `meny_sessionid=${cookie}` } : {},
+    });
+    client.on('error', () => {});
+    const [, response] = await once(client, 'unexpected-response');
+    assert.equal(response.statusCode, 401);
+    response.resume();
+    client.terminate();
+  }
+});
+
+test('public shop channel skips session auth and never receives private order notifications', async (t) => {
+  let authCalls = 0;
+  const django = await listen(t, createServer((request, response) => {
+    authCalls++;
+    response.end(JSON.stringify({ user_id: 42 }));
+  }));
+  const { address, sockets } = await backend(t, {
+    djangoUrl: `http://${django}/`,
+    serviceToken: 'test-only-service-token',
+    notifyToken: 'test-only-notify-token',
+    allowedOrigins: ['https://app.example'],
+  });
+  const clients = [];
+  for (const [path, cookie, identity] of [
+    ['/shop/', undefined, 'public:shop'],
+    ['/shop/', 'private-session', 'public:shop'],
+    ['/', 'staff-session', 42],
+  ]) {
+    const accepted = once(sockets, 'connection');
+    const client = new WebSocket(`ws://${address}${path}`, {
+      origin: 'https://app.example',
+      headers: cookie ? { Cookie: `sessionid=${cookie}` } : {},
+    });
+    await once(client, 'open');
+    assert.equal((await accepted)[0].userId, identity);
+    clients.push(client);
+  }
+  assert.equal(authCalls, 1);
+  const received = clients.map(() => []);
+  clients.forEach((client, index) => client.on('message', data => received[index].push(JSON.parse(data.toString()))));
+  const url = `http://${address}/internal/notify/`;
+  const headers = { Authorization: 'Bearer test-only-notify-token', 'Content-Type': 'application/json' };
+  assert.equal((await fetch(url, {
+    method: 'POST', body: JSON.stringify({ user_id: 'public:shop', event: 'shop.changed', result: {} }),
+  })).status, 403);
+  const shopEvents = clients.slice(0, 2).map(client => once(client, 'message'));
+  const result = await fetch(url, {
+    method: 'POST', headers,
+    body: JSON.stringify({ user_id: 'public:shop', event: 'shop.changed', result: {} }),
+  });
+  assert.deepEqual(await result.json(), { matched_connections: 2 });
+  await Promise.all(shopEvents);
+  const staffEvent = once(clients[2], 'message');
+  await fetch(url, {
+    method: 'POST', headers,
+    body: JSON.stringify({ user_id: 42, event: 'orders.changed', result: { order_id: 7 } }),
+  });
+  await staffEvent;
+  for (const client of clients) {
+    const barrier = once(client, 'message');
+    client.send(JSON.stringify({ barrier: true }));
+    await barrier;
+  }
+  assert.deepEqual(received[0], [{ event: 'shop.changed', result: {} }, { barrier: true }]);
+  assert.deepEqual(received[1], [{ event: 'shop.changed', result: {} }, { barrier: true }]);
+  assert.deepEqual(received[2], [{ event: 'orders.changed', result: { order_id: 7 } }, { barrier: true }]);
 });
 
 test('internal notifications require service authentication, valid payloads, and bounded bodies', async (t) => {

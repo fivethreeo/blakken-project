@@ -1,8 +1,12 @@
 import { initPageTurn } from 'turnpage-book';
 import { initDishEditor } from './dish-editor';
+import { initPageEditor } from './page-editor';
 
 export async function initMenuReader(root: HTMLElement) {
-  const book = await initPageTurn(root, { clickToTurn: true, pageMargin: 0.03 });
+  const book = await initPageTurn(root, {
+    clickToTurn: true, pageMargin: 0.03, animateInitialNavigation: false,
+  });
+  root.style.setProperty('--book-aspect', root.querySelector('canvas')!.style.getPropertyValue('--book-aspect'));
   const source = root.querySelector<HTMLElement>('[data-book-pages]')!;
   const dishError = root.querySelector<HTMLElement>('[data-dish-error]')!;
   let queue = Promise.resolve();
@@ -56,39 +60,76 @@ export async function initMenuReader(root: HTMLElement) {
   }
 
   const editor = initDishEditor(root, book, () => enqueue(replaceContent));
+  const pageEditor = initPageEditor(root, book);
 
   root.addEventListener('click', (event) => {
     const button = event.target instanceof Element
-      ? event.target.closest<HTMLButtonElement>('button[data-dish-action]') : null;
-    const direction = button?.dataset.dishAction;
-    if (!button || (direction !== 'up' && direction !== 'down')) return;
+      ? event.target.closest<HTMLButtonElement>('button[data-dish-action], button[data-page-action]') : null;
+    const pageMove = button?.dataset.pageAction === 'left' || button?.dataset.pageAction === 'right';
+    const visibilityChange = button?.dataset.pageAction === 'visibility'
+      || button?.dataset.dishAction === 'visibility';
+    const direction = pageMove ? button?.dataset.pageAction : button?.dataset.dishAction;
+    if (!button || (!visibilityChange && (!direction || !['up', 'down', 'left', 'right'].includes(direction)))) return;
     event.preventDefault();
-    if (moving || editor.open) return;
+    if (moving || editor.open || pageEditor.open) return;
+    const pageKey = button.closest<HTMLElement>('[data-menu-page]')?.dataset.menuPage;
     moving = true;
     let saved = false;
     dishError.hidden = true;
     root.setAttribute('aria-busy', 'true');
-    root.querySelectorAll<HTMLButtonElement>('.dish-actions button, .book-links button')
+    root.querySelectorAll<HTMLButtonElement>('.dish-actions button, .dish-visibility, .page-actions button, .dish-create, .book-links button')
       .forEach((control) => { control.disabled = true; });
     void enqueue(async () => {
-      const response = await fetch(button.dataset.moveUrl!, {
-        method: 'POST',
+      const response = await fetch(visibilityChange ? button.dataset.visibilityUrl! : button.dataset.moveUrl!, {
+        method: visibilityChange ? 'PATCH' : 'POST',
         credentials: 'same-origin',
-        headers: { 'X-CSRFToken': source.dataset.csrfToken || '' },
-        body: new URLSearchParams({ direction }),
+        headers: {
+          'X-CSRFToken': source.dataset.csrfToken || '',
+          ...(visibilityChange ? { 'Content-Type': 'application/json' } : {}),
+        },
+        body: visibilityChange
+          ? JSON.stringify({ is_visible: button.dataset.isVisible !== 'true' })
+          : new URLSearchParams({ direction: direction! }),
+        signal: AbortSignal.timeout(15000),
       });
       if (!response.ok) throw new Error(`Unable to move dish (${response.status}).`);
       saved = true;
+      if (pageMove) {
+        history.replaceState(null, '', `#${encodeURIComponent(button.dataset.categorySlug!)}`);
+        window.location.reload();
+        return;
+      }
       await replaceContent();
-    }).catch(() => {
-      dishError.textContent = saved
-        ? 'Retten er flyttet, men menyen kunne ikke oppdateres. Last siden på nytt.'
-        : 'Kunne ikke flytte retten. Last siden på nytt og prøv igjen.';
+      if (visibilityChange) {
+        const replacement = source.querySelector<HTMLButtonElement>(
+          `[data-menu-page="${pageKey}"] `
+          + `[data-visibility-url="${button.dataset.visibilityUrl}"]`,
+        );
+        const target = source.hidden
+          ? Array.from(root.querySelectorAll<HTMLButtonElement>('.book-links button'))
+            .find((control) => control.getAttribute('aria-label') === replacement?.getAttribute('aria-label'))
+          : replacement;
+        (target ?? root.querySelector<HTMLCanvasElement>('canvas'))?.focus({ preventScroll: true });
+      }
+    }).catch((error) => {
+      if (visibilityChange && saved && error instanceof RangeError) {
+        window.location.reload();
+        return;
+      }
+      dishError.textContent = visibilityChange
+        ? saved
+          ? 'Synligheten er lagret, men menyen kunne ikke oppdateres. Last siden på nytt.'
+          : 'Kunne ikke endre synligheten. Last siden på nytt og prøv igjen.'
+        : pageMove
+        ? 'Kunne ikke flytte siden. Last siden på nytt og prøv igjen.'
+        : saved
+          ? 'Retten er flyttet, men menyen kunne ikke oppdateres. Last siden på nytt.'
+          : 'Kunne ikke flytte retten. Last siden på nytt og prøv igjen.';
       dishError.hidden = false;
     }).finally(() => {
       moving = false;
       root.removeAttribute('aria-busy');
-      root.querySelectorAll<HTMLButtonElement>('.dish-actions button, .book-links button')
+      root.querySelectorAll<HTMLButtonElement>('.dish-actions button, .dish-visibility, .page-actions button, .dish-create, .book-links button')
         .forEach((control) => { control.disabled = false; });
     });
   });

@@ -4,6 +4,7 @@ export interface AuthOptions {
   djangoUrl?: string;
   serviceToken?: string;
   sessionCookieName?: string;
+  authPath?: 'internal/auth/' | 'internal/order-auth/';
 }
 
 export type AuthResult = string | number | null;
@@ -14,6 +15,7 @@ export async function authenticate(
     djangoUrl = process.env.DJANGO_INTERNAL_URL,
     serviceToken = process.env.DJANGO_INTERNAL_AUTH_TOKEN,
     sessionCookieName = process.env.DJANGO_SESSION_COOKIE_NAME || 'sessionid',
+    authPath = 'internal/auth/',
   }: AuthOptions = {},
 ): Promise<AuthResult> {
   if (!djangoUrl || !serviceToken) return null;
@@ -27,7 +29,7 @@ export async function authenticate(
 
   try {
     const base = djangoUrl.endsWith('/') ? djangoUrl : `${djangoUrl}/`;
-    const response = await fetch(new URL('internal/auth/', base), {
+    const response = await fetch(new URL(authPath, base), {
       headers: {
         Cookie: cookie,
         Authorization: `Bearer ${serviceToken}`,

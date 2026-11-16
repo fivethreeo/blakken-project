@@ -119,7 +119,8 @@ export function createBackend(appName = 'meny', options: BackendOptions = {}) {
         + 'Connection: close\r\nCache-Control: no-store\r\nContent-Length: 0\r\n\r\n',
       );
     };
-    if (new URL(request.url ?? '/', 'http://localhost').pathname !== '/') {
+    const path = new URL(request.url ?? '/', 'http://localhost').pathname;
+    if (path !== '/' && path !== '/orders/' && path !== '/shop/') {
       reject(404);
       return;
     }
@@ -127,8 +128,14 @@ export function createBackend(appName = 'meny', options: BackendOptions = {}) {
       reject(403);
       return;
     }
-    const userId = await authenticate(request, auth);
+    const userId = path === '/shop/' ? 'public:shop' : await authenticate(request, {
+      ...auth, authPath: path === '/orders/' ? 'internal/order-auth/' : 'internal/auth/',
+    });
     if (socket.destroyed || !socket.writable) return;
+    if (path === '/orders/' && (typeof userId !== 'string' || !userId.startsWith('orders:'))) {
+      reject(401);
+      return;
+    }
     sockets.handleUpgrade(request, socket, head, (socket) => {
       const sessionSocket = socket as SessionWebSocket;
       sessionSocket.userId = userId;

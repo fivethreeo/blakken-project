@@ -14,21 +14,168 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
 from .celery import app
-from .models import ALLERGEN_CHOICES, Dish, Job, Menu, MenuPage
+from .models import ALLERGEN_CHOICES, Dish, Job, Menu, MenuPage, menu_page_groups
+from .orders import ensure_order_channel, get_shop_status
 
 
 @never_cache
 @require_GET
 def index(request):
     menu = get_object_or_404(Menu.objects.prefetch_related('pages__dishes'), pk=2)
-    return render(request, 'index.html', {'menu': menu})
+    ensure_order_channel(request)
+    return render(request, 'index.html', {'menu': menu, 'shop': get_shop_status()})
 
 
 @never_cache
-@require_GET
+@require_http_methods(['GET', 'POST'])
 def menu_pages(request, menu_id):
+    if request.method == 'POST':
+        return create_page(request, menu_id)
     menu = get_object_or_404(Menu.objects.prefetch_related('pages__dishes'), pk=menu_id)
     return render(request, 'menu/pages.html', {'menu': menu})
+
+
+def create_page(request, menu_id):
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Unauthenticated'}, status=401)
+    if not (request.user.is_staff or request.user.is_superuser):
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+    if request.content_type != 'application/json':
+        return JsonResponse({'error': 'Expected application/json'}, status=415)
+    try:
+        data = json.loads(request.body)
+    except (ValueError, UnicodeDecodeError):
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+    fields = {'name', 'heading', 'decorative_title', 'content'}
+    if not isinstance(data, dict) or set(data) - fields - {'after_page_id'}:
+        return JsonResponse({'error': 'Invalid fields'}, status=400)
+    if type(data.get('after_page_id')) is not int:
+        return JsonResponse({'error': 'Invalid page'}, status=400)
+    with transaction.atomic():
+        menu = get_object_or_404(Menu.objects.select_for_update(), pk=menu_id)
+        pages = list(menu.pages.select_for_update())
+        after = next((page for page in pages if page.pk == data['after_page_id']), None)
+        if after is None:
+            raise Http404
+        if len(pages) < 2 or after == pages[-1] or (
+            after != pages[0] and after.layout == MenuPage.Layout.COVER
+        ):
+            return JsonResponse({'error': 'Cannot insert after this cover'}, status=400)
+        group = next((group for group in menu_page_groups(pages) if after in group), [after])
+        insert_at = pages.index(group[-1]) + 1
+        page = MenuPage(menu=menu)
+        errors = {}
+        for field in fields:
+            value = data.get(field, '')
+            if not isinstance(value, str):
+                errors[field] = ['Skriv inn tekst.']
+            else:
+                setattr(page, field, value.strip())
+        page.slug = page.unique_slug()
+        try:
+            page.full_clean()
+        except ValidationError as error:
+            errors.update(error.message_dict)
+        if errors:
+            return JsonResponse({'errors': errors}, status=400)
+        page.save()
+        pages.insert(insert_at, page)
+        for position, item in enumerate(pages):
+            item.position = position
+        MenuPage.objects.bulk_update(pages, ['position'])
+    return JsonResponse({'page': {'id': page.pk, 'slug': page.slug}}, status=201)
+
+
+@never_cache
+@require_POST
+def move_page(request, menu_id, page_id):
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Unauthenticated'}, status=401)
+    if not (request.user.is_staff or request.user.is_superuser):
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+    direction = request.POST.get('direction')
+    if direction not in ('left', 'right'):
+        return JsonResponse({'error': 'Invalid direction'}, status=400)
+    with transaction.atomic():
+        menu = get_object_or_404(Menu.objects.select_for_update(), pk=menu_id)
+        pages = list(menu.pages.select_for_update())
+        page = next((page for page in pages if page.pk == page_id), None)
+        if page is None:
+            raise Http404
+        groups = menu_page_groups(pages)
+        index = next((index for index, group in enumerate(groups) if page in group), None)
+        if index is None or groups[index][0].layout == MenuPage.Layout.COVER:
+            return JsonResponse({'moved': False})
+        neighbor = index + (-1 if direction == 'left' else 1)
+        if neighbor < 0 or neighbor >= len(groups) or groups[neighbor][0].layout == MenuPage.Layout.COVER:
+            return JsonResponse({'moved': False})
+        groups[index], groups[neighbor] = groups[neighbor], groups[index]
+        ordered = [pages[0], *(page for group in groups for page in group), pages[-1]]
+        for position, page in enumerate(ordered):
+            page.position = position
+        MenuPage.objects.bulk_update(ordered, ['position'])
+    return JsonResponse({'moved': True})
+
+
+@never_cache
+@require_http_methods(['DELETE'])
+def delete_page(request, menu_id, page_id):
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Unauthenticated'}, status=401)
+    if not (request.user.is_staff or request.user.is_superuser):
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+    with transaction.atomic():
+        menu = get_object_or_404(Menu.objects.select_for_update(), pk=menu_id)
+        pages = list(menu.pages.select_for_update())
+        page = next((page for page in pages if page.pk == page_id), None)
+        if page is None:
+            raise Http404
+        groups = menu_page_groups(pages)
+        index = next((index for index, group in enumerate(groups) if page in group), None)
+        if index is None or groups[index][0].layout == MenuPage.Layout.COVER:
+            return JsonResponse({'error': 'Cannot delete a cover'}, status=400)
+        deleted_ids = {page.pk for page in groups[index]}
+        remaining_groups = groups[:index] + groups[index + 1:]
+        landing = (
+            remaining_groups[min(index, len(remaining_groups) - 1)][0]
+            if remaining_groups else pages[0]
+        )
+        MenuPage.objects.filter(menu=menu, pk__in=deleted_ids).delete()
+        remaining = [page for page in pages if page.pk not in deleted_ids]
+        for position, page in enumerate(remaining):
+            page.position = position
+        MenuPage.objects.bulk_update(remaining, ['position'])
+    return JsonResponse({'category_slug': landing.slug})
+
+
+@never_cache
+@require_http_methods(['PATCH'])
+def page_visibility(request, menu_id, page_id):
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Unauthenticated'}, status=401)
+    if not (request.user.is_staff or request.user.is_superuser):
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+    if request.content_type != 'application/json':
+        return JsonResponse({'error': 'Expected application/json'}, status=415)
+    try:
+        data = json.loads(request.body)
+    except (ValueError, UnicodeDecodeError):
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+    if not isinstance(data, dict) or set(data) != {'is_visible'} or type(data['is_visible']) is not bool:
+        return JsonResponse({'error': 'Invalid fields'}, status=400)
+    with transaction.atomic():
+        menu = get_object_or_404(Menu.objects.select_for_update(), pk=menu_id)
+        pages = list(menu.pages.select_for_update())
+        page = next((page for page in pages if page.pk == page_id), None)
+        if page is None:
+            raise Http404
+        group = next((group for group in menu_page_groups(pages) if page in group), None)
+        if group is None or group[0].layout == MenuPage.Layout.COVER:
+            return JsonResponse({'error': 'Cannot hide a cover'}, status=400)
+        MenuPage.objects.filter(pk__in=[member.pk for member in group]).update(
+            is_visible=data['is_visible'],
+        )
+    return JsonResponse({'is_visible': data['is_visible']})
 
 
 def _dish_response(dish, status=200):
@@ -39,6 +186,7 @@ def _dish_response(dish, status=200):
             'description': dish.description,
             'price': format(dish.price, '.2f') if dish.price is not None else None,
             'allergens': dish.allergens,
+            'is_visible': dish.is_visible,
         },
         'allergen_choices': ALLERGEN_CHOICES,
         'create_url': reverse('dish-list', args=[dish.menu_page.menu_id, dish.menu_page_id]),
@@ -56,10 +204,15 @@ def _save_dish(request, dish):
         data = json.loads(request.body)
     except (ValueError, UnicodeDecodeError):
         return JsonResponse({'error': 'Invalid JSON'}, status=400)
-    fields = {'name', 'description', 'price', 'allergens'}
+    fields = {'name', 'description', 'price', 'allergens', 'is_visible'}
     if not isinstance(data, dict) or set(data) - fields:
         return JsonResponse({'error': 'Invalid fields'}, status=400)
     errors = {}
+    if 'is_visible' in data:
+        if type(data['is_visible']) is not bool:
+            errors['is_visible'] = ['Velg om retten skal vises til kunder.']
+        else:
+            dish.is_visible = data['is_visible']
     for field in ('name', 'description'):
         if field not in data:
             continue
@@ -123,12 +276,15 @@ def dish_detail(request, menu_id, dish_id):
 
 
 @never_cache
-@require_POST
+@require_http_methods(['GET', 'POST'])
 def dish_list(request, menu_id, page_id):
     if not request.user.is_authenticated:
         return JsonResponse({'error': 'Unauthenticated'}, status=401)
     if not (request.user.is_staff or request.user.is_superuser):
         return JsonResponse({'error': 'Forbidden'}, status=403)
+    if request.method == 'GET':
+        page = get_object_or_404(MenuPage, pk=page_id, menu_id=menu_id)
+        return _dish_response(Dish(menu_page=page))
     with transaction.atomic():
         page = get_object_or_404(MenuPage.objects.select_for_update(), pk=page_id, menu_id=menu_id)
         last = page.dishes.aggregate(last=Max('position'))['last']

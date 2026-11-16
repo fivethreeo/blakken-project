@@ -1,7 +1,7 @@
 import type { PageTurnController } from 'turnpage-book';
 
 type DishResponse = {
-  dish: { id: number; name: string; description: string; price: string | null; allergens: string[] };
+  dish: { id: number | null; name: string; description: string; price: string | null; allergens: string[] };
   allergen_choices: [string, string][];
   create_url: string;
   category_slug: string;
@@ -20,13 +20,13 @@ export function initDishEditor(
   const errorMessage = dialog.querySelector<HTMLElement>('[data-dish-editor-error]')!;
   const title = dialog.querySelector<HTMLElement>('#dish-editor-title')!;
   const saveButton = dialog.querySelector<HTMLButtonElement>('[data-dish-save]')!;
-  const addButton = dialog.querySelector<HTMLButtonElement>('[data-dish-add]')!;
   const deleteButton = dialog.querySelector<HTMLButtonElement>('[data-dish-delete]')!;
   const deletePrompt = dialog.querySelector<HTMLElement>('[data-dish-delete-prompt]')!;
   const source = root.querySelector<HTMLElement>('[data-book-pages]')!;
   let loadController: AbortController | undefined;
   let url = '';
   let dishId = '';
+  let pageId = '';
   let createUrl = '';
   let categorySlug = '';
   let creating = false;
@@ -53,7 +53,6 @@ export function initDishEditor(
       'input, textarea, button',
     ).forEach((control) => { control.disabled = busy; });
     if (!busy) {
-      addButton.disabled = creating || Boolean(form.hidden);
       deleteButton.disabled = creating || Boolean(form.hidden);
     }
   }
@@ -64,13 +63,15 @@ export function initDishEditor(
   }
 
   async function open(button: HTMLButtonElement) {
-    url = button.dataset.editUrl!;
-    dishId = button.dataset.dishId!;
-    creating = false;
+    creating = button.dataset.dishAction === 'add';
+    url = creating ? button.dataset.createUrl! : button.dataset.editUrl!;
+    dishId = button.dataset.dishId || '';
+    pageId = button.dataset.pageId || '';
     createUrl = '';
     categorySlug = '';
-    title.textContent = 'Rediger rett';
-    saveButton.textContent = 'Lagre endringer';
+    title.textContent = creating ? 'Legg til rett' : 'Rediger rett';
+    saveButton.textContent = creating ? 'Legg til rett' : 'Lagre endringer';
+    deleteButton.hidden = creating;
     form.reset();
     form.hidden = true;
     deletePrompt.hidden = true;
@@ -118,7 +119,7 @@ export function initDishEditor(
 
   root.addEventListener('click', (event) => {
     const button = event.target instanceof Element
-      ? event.target.closest<HTMLButtonElement>('button[data-dish-action="edit"]') : null;
+      ? event.target.closest<HTMLButtonElement>('button[data-dish-action="edit"], button[data-dish-action="add"]') : null;
     if (!button) return;
     event.preventDefault();
     if (!dialog.open && root.getAttribute('aria-busy') !== 'true') void open(button);
@@ -132,7 +133,9 @@ export function initDishEditor(
     loadController?.abort();
     book.setClickToTurn(true);
     const original = source.querySelector<HTMLButtonElement>(
-      `[data-dish-action="edit"][data-dish-id="${dishId}"]`,
+      creating
+        ? `[data-dish-action="add"][data-page-id="${pageId}"]`
+        : `[data-dish-action="edit"][data-dish-id="${dishId}"]`,
     );
     const focusTarget = source.hidden
       ? Array.from(root.querySelectorAll<HTMLButtonElement>('.book-links button'))
@@ -141,18 +144,6 @@ export function initDishEditor(
     (focusTarget ?? root.querySelector<HTMLCanvasElement>('canvas'))?.focus({ preventScroll: true });
   });
 
-  addButton.addEventListener('click', () => {
-    if (saving || !createUrl) return;
-    creating = true;
-    form.reset();
-    clearErrors();
-    deletePrompt.hidden = true;
-    form.hidden = false;
-    title.textContent = 'Legg til rett';
-    saveButton.textContent = 'Legg til rett';
-    setBusy(false);
-    name.focus();
-  });
   deleteButton.addEventListener('click', () => {
     if (saving || creating) return;
     clearErrors();

@@ -1,0 +1,94 @@
+<div data-cart data-menu-id="{{ menu.pk }}" data-order-url="{% url 'create-order' menu.pk %}"
+  data-status-url="{% url 'customer-orders' %}" data-shop-url="{% url 'shop-status' %}"
+  data-shop-open="{{ shop.is_open|yesno:'true,false' }}" data-shop-message="{{ shop.message }}">
+  <button class="cart-launcher cluster align-items:center justify-content:center" type="button"
+    data-cart-open hidden aria-label="Åpne handlekurven" title="Åpne handlekurven" aria-haspopup="dialog">
+    <svg class="icon" aria-hidden="true" focusable="false"><use href="#cart" xlink:href="#cart" data-cart-icon></use></svg>
+    <span data-cart-count hidden>0</span>
+  </button>
+  <div class="flash-message menu-editor imposter contain box" data-cart-flash popover="manual"
+    role="status" aria-live="polite" aria-atomic="true">
+    <div class="with-sidebar with-sidebar:right align-items:center">
+      <p data-cart-flash-message></p>
+      <button class="cart-icon-button cluster align-items:center justify-content:center" type="button"
+        data-cart-flash-close aria-label="Lukk meldingen" title="Lukk meldingen">
+        <svg class="icon" aria-hidden="true" focusable="false"><use href="#cross" xlink:href="#cross"></use></svg>
+      </button>
+    </div>
+  </div>
+  <dialog class="menu-editor cart-editor imposter contain box" data-cart-dialog aria-labelledby="cart-title">
+    <div class="stack">
+      <header class="cluster align-items:center justify-content:space-between">
+        <h2 id="cart-title">Handlekurv</h2>
+        <button class="cart-icon-button cluster align-items:center justify-content:center" type="button"
+          data-cart-close aria-label="Lukk handlekurven" title="Lukk handlekurven">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#cross" xlink:href="#cross"></use></svg>
+        </button>
+      </header>
+      <p data-shop-closed role="status" hidden>Stengt for bestillinger. Du kan fortsatt lese menyen og endre handlekurven.</p>
+      <p data-cart-empty>Handlekurven er tom.</p>
+      <ul class="stack cart-items" data-cart-items></ul>
+      <p data-cart-summary hidden>Sum: <strong data-cart-total>0 kr</strong></p>
+      <form class="stack" data-cart-form hidden>
+        {% csrf_token %}
+        <div class="grid cart-contact">
+          <label class="stack dish-editor-field">Navn
+            <input name="customer_name" autocomplete="name" maxlength="150" required>
+          </label>
+          <label class="stack dish-editor-field">Telefon
+            <input type="tel" name="phone" autocomplete="tel" maxlength="32" required>
+          </label>
+        </div>
+        <details>
+          <summary>Merknad (valgfritt)</summary>
+          <textarea name="note" rows="2" maxlength="2000" aria-label="Merknad"></textarea>
+        </details>
+        <p class="render-error" data-cart-error role="alert" hidden></p>
+        <div class="reader-controls">
+          <button type="submit" data-cart-submit disabled>Send bestilling</button>
+        </div>
+      </form>
+      <button type="button" data-order-status-open hidden>Vis bestillingsstatus</button>
+    </div>
+  </dialog>
+  <dialog class="menu-editor cart-editor imposter contain box" data-order-status-dialog aria-labelledby="customer-orders-title">
+    <div class="stack">
+      <header class="cluster align-items:center justify-content:space-between">
+        <h2 id="customer-orders-title">Dine bestillinger</h2>
+        <button class="cart-icon-button cluster align-items:center justify-content:center" type="button"
+          data-order-status-close aria-label="Lukk bestillingsstatus" title="Lukk bestillingsstatus">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#cross" xlink:href="#cross"></use></svg>
+        </button>
+      </header>
+      <section class="stack customer-orders" data-customer-orders hidden aria-labelledby="customer-orders-title">
+        <div class="stack" data-customer-order-list aria-live="polite" aria-atomic="true"></div>
+        <p data-customer-order-connection role="status">Henter status …</p>
+      </section>
+      <p data-cart-receipt role="status" hidden></p>
+    </div>
+  </dialog>
+  <template data-customer-order-card>
+    <div class="customer-order-card box stack">
+      <p data-customer-order-number></p>
+      <p class="customer-order-status" data-customer-order-status></p>
+      <p data-customer-order-description></p>
+    </div>
+  </template>
+  <template data-cart-row>
+    <li class="with-sidebar with-sidebar:right align-items:center">
+      <div class="stack"><strong data-cart-name></strong><span data-cart-price></span></div>
+      <div class="cart-row-actions cluster align-items:center">
+        <button class="cart-icon-button cluster align-items:center justify-content:center" type="button" data-cart-row-action="subtract">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#cartremove" xlink:href="#cartremove"></use></svg>
+        </button>
+        <output data-cart-quantity></output>
+        <button class="cart-icon-button cluster align-items:center justify-content:center" type="button" data-cart-row-action="add">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#cartadd" xlink:href="#cartadd"></use></svg>
+        </button>
+        <button class="cart-icon-button cluster align-items:center justify-content:center" type="button" data-cart-row-action="delete">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#cross" xlink:href="#cross"></use></svg>
+        </button>
+      </div>
+    </li>
+  </template>
+</div>
