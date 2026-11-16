@@ -82,10 +82,10 @@ def run_npm(args, envs, wait=True, cwd=TS_DIR):
 def file_mtime(path):
     return os.stat(path).st_mtime_ns
 
-def build_typescript_icons():
-    print("🎨 Master icon SVG changed; generating TypeScript icons...")
+def build_svg_icons():
+    print("🎨 Master icon SVG changed; generating inline SVG sprites...")
     subprocess.run(
-        [sys.executable, ICON_GENERATOR, "--format", "ts"],
+        [sys.executable, ICON_GENERATOR],
         cwd=ROOT_DIR,
         check=True,
     )
@@ -210,7 +210,7 @@ def run_parallel(args, envs):
         )
     processes = []
     reload_directory = (
-        tempfile.TemporaryDirectory(prefix="template-django-reload-")
+        tempfile.TemporaryDirectory(prefix="meny-django-reload-")
         if django_enabled and frontend_enabled and not IS_WINDOWS else None
     )
     reload_trigger = Path(reload_directory.name) / "frontend-reload" if reload_directory else None
@@ -235,7 +235,7 @@ def run_parallel(args, envs):
             {"DJANGO_RELOAD_TRIGGER": str(reload_trigger)} if reload_trigger else None,
         )
 
-    watch_icons = frontend_enabled and os.path.isfile(MASTER_ICONS_SVG) and os.path.isfile(ICON_GENERATOR)
+    watch_icons = django_enabled and os.path.isfile(MASTER_ICONS_SVG) and os.path.isfile(ICON_GENERATOR)
     master_icons_mtime = file_mtime(MASTER_ICONS_SVG) if watch_icons else None
     build_icons_at = None
     try:
@@ -269,7 +269,7 @@ def run_parallel(args, envs):
         if django_enabled:
             start_process(
                 [
-                    VENV_PYTHON, "-m", "celery", "--app=template", "worker",
+                    VENV_PYTHON, "-m", "celery", "--app=meny", "worker",
                     "--loglevel=INFO", "--pool=solo", "--concurrency=1",
                     "--without-gossip", "--without-mingle", "--without-heartbeat",
                 ],
@@ -290,9 +290,9 @@ def run_parallel(args, envs):
             if build_icons_at is not None and time.monotonic() >= build_icons_at:
                 build_icons_at = None
                 try:
-                    build_typescript_icons()
+                    build_svg_icons()
                 except subprocess.CalledProcessError as error:
-                    print(f"❌ TypeScript icon generation failed: {error}")
+                    print(f"❌ SVG sprite generation failed: {error}")
     except KeyboardInterrupt:
         print("\n🛑 Shutting down all services gracefully...")
     finally:

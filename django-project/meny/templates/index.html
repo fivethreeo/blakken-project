@@ -1,0 +1,88 @@
+{% load rsbuild %}<!doctype html>
+<html lang="nb">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ menu.name }}</title>
+  {% rsbuild_entry 'index' %}
+</head>
+<body class="no-js" data-ts-backend-url="{{ ts_backend_url }}" data-ts-ws-backend-url="{{ ts_ws_backend_url }}">
+  {% include 'includes/icons.svg' %}
+  <script>document.body.classList.replace('no-js', 'with-js');</script>
+  <a class="skip-link" href="#book">Hopp til menyen</a>
+  <main class="menu-shell center stack">
+    <header class="menu-heading stack">
+      <h1>{{ menu.name }}</h1>
+      {% if menu.description %}<p>{{ menu.description|linebreaksbr }}</p>{% endif %}
+    </header>
+
+    <section class="reader" id="book" data-page-turn aria-label="{{ menu.name }}"
+      data-pages-url="{% url 'menu-pages' menu.pk %}">
+      <div class="book-stage">
+        <canvas data-book-canvas role="button" tabindex="0" aria-disabled="true"
+          aria-label="Åpne menyen" aria-describedby="page-description">
+          Nettleseren støtter ikke canvas.
+        </canvas>
+      </div>
+      <p class="render-error" data-book-error role="status" hidden></p>
+      <p class="render-error" data-dish-error role="alert" hidden></p>
+      <nav class="reader-controls" aria-label="Menyvalg">
+        <button data-book-previous type="button" disabled>Forrige</button>
+        <p data-book-status aria-live="polite">Forside</p>
+        <button data-book-next type="button" disabled>Åpne menyen</button>
+        <button data-book-text type="button" aria-expanded="false"
+          aria-controls="source-pages" disabled>Tekstmeny</button>
+      </nav>
+      <p class="reader-help">Bla med pilknappene, knappene eller berøringsskjermen.</p>
+      <p class="visually-hidden" id="page-description" data-book-description></p>
+
+      {% include 'menu/pages.html' %}
+    </section>
+
+    <dialog class="dish-editor imposter contain box" data-dish-editor aria-labelledby="dish-editor-title">
+      <div class="stack">
+        <header class="slide-header cluster">
+          <p class="slide-label">Små endringer, gode smaker</p>
+          <div class="reader-controls cluster">
+            <button type="button" data-dish-add disabled>Legg til</button>
+            <button type="button" data-dish-delete disabled>Slett</button>
+            <button type="button" data-dish-editor-close>Lukk</button>
+          </div>
+        </header>
+        <h2 id="dish-editor-title">Rediger rett</h2>
+        <p data-dish-editor-loading role="status" hidden>Henter retten …</p>
+        <p id="dish-editor-error" data-dish-editor-error role="alert" hidden></p>
+        <section class="stack" data-dish-delete-prompt hidden aria-label="Bekreft sletting">
+          <p>Vil du slette denne retten? Dette kan ikke angres.</p>
+          <div class="reader-controls cluster">
+            <button type="button" data-dish-confirm-delete>Ja, slett retten</button>
+            <button type="button" data-dish-cancel-delete>Avbryt</button>
+          </div>
+        </section>
+        <form class="stack" data-dish-form hidden>
+          <label class="stack dish-editor-field">
+            <span>Navn</span>
+            <input name="name" type="text" maxlength="150" required autocomplete="off">
+          </label>
+          <label class="stack dish-editor-field">
+            <span>Beskrivelse</span>
+            <textarea name="description" rows="3"></textarea>
+          </label>
+          <label class="stack dish-editor-field">
+            <span>Pris (kr, valgfri)</span>
+            <input name="price" type="number" min="0" max="999999.99" step="0.01" inputmode="decimal">
+          </label>
+          <fieldset class="box box:border">
+            <legend>Allergener</legend>
+            <div class="grid dish-editor-choices" data-dish-allergens></div>
+          </fieldset>
+          <footer class="reader-controls cluster">
+            <button type="submit" data-dish-save>Lagre endringer</button>
+            <button type="button" data-dish-editor-close>Avbryt</button>
+          </footer>
+        </form>
+      </div>
+    </dialog>
+  </main>
+</body>
+</html>

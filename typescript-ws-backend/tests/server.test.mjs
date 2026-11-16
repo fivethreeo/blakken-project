@@ -13,7 +13,7 @@ async function listen(t, server) {
 }
 
 async function backend(t, options) {
-  const { server, sockets } = createBackend('template_staging', options);
+  const { server, sockets } = createBackend('meny_staging', options);
   t.after(async () => {
     for (const socket of sockets.clients) socket.terminate();
     await new Promise((resolve) => sockets.close(resolve));
@@ -35,7 +35,7 @@ test('serves health and echoes text/binary frames over WebSockets', async (t) =>
   });
   const health = await fetch(`http://${address}/healthz`);
   assert.deepEqual(await health.json(), {
-    app: 'template_staging', service: 'typescript-ws-backend', status: 'ok',
+    app: 'meny_staging', service: 'typescript-ws-backend', status: 'ok',
   });
   assert.equal(calls.length, 0);
   assert.equal((await fetch(`http://${address}/`)).status, 426);
@@ -284,17 +284,17 @@ test('uses only the configured Django cookie when apps share an origin', async (
   }));
   const { address, sockets } = await backend(t, {
     djangoUrl: `http://${django}/`, serviceToken: 'test-only-service-token',
-    sessionCookieName: 'template_sessionid', allowedOrigins: ['https://app.example'],
+    sessionCookieName: 'meny_sessionid', allowedOrigins: ['https://app.example'],
   });
   const connection = once(sockets, 'connection');
   const socket = new WebSocket(`ws://${address}/`, {
     origin: 'https://app.example',
-    headers: { Cookie: 'sessionid=prosango; template_sessionid=template' },
+    headers: { Cookie: 'sessionid=prosango; meny_sessionid=template' },
   });
   await once(socket, 'open');
   const [accepted] = await connection;
   assert.equal(accepted.userId, 42);
-  assert.deepEqual(cookies, ['template_sessionid=template']);
+  assert.deepEqual(cookies, ['meny_sessionid=template']);
   socket.close();
   await once(socket, 'close');
 });

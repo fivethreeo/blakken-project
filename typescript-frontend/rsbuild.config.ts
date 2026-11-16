@@ -67,7 +67,7 @@ export default defineConfig(({ env }) => {
     },
     rspack: {
       output: {
-        uniqueName: 'template_app',
+        uniqueName: 'meny_app',
         ...(isDevelopment ? { chunkFilename: 'js/[name].js' } : {}),
       },
       optimization: {

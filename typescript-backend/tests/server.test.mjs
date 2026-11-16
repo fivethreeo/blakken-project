@@ -23,7 +23,7 @@ test('serves health/JSON and rejects unknown paths and methods', async (t) => {
       response.end(JSON.stringify({ user_id: 42 }));
     }
   }));
-  const server = createBackend('template_staging', {
+  const server = createBackend('meny_staging', {
     djangoUrl: `${django}/django`, serviceToken: 'test-only-service-token',
   });
   const requests = [];
@@ -42,7 +42,7 @@ test('serves health/JSON and rejects unknown paths and methods', async (t) => {
     const response = await fetch(base + path, { headers });
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), {
-      app: 'template_staging', service: 'typescript-backend', status: 'ok',
+      app: 'meny_staging', service: 'typescript-backend', status: 'ok',
     });
   }
   assert.equal(calls.length, 1);
@@ -86,7 +86,7 @@ test('falls back to anonymous when Django authentication is unconfigured or retu
     ['test-only-service-token', 'invalid-user'],
   ]) {
     await t.test(cookie, async (t) => {
-      const server = createBackend('template', { djangoUrl: django, serviceToken });
+      const server = createBackend('meny', { djangoUrl: django, serviceToken });
       let request;
       server.on('request', incoming => { request = incoming; });
       const base = await listen(t, server);
@@ -111,7 +111,7 @@ test('missing auth configuration warns once and never contacts Django', async (t
     [{ djangoUrl: '', serviceToken: 'test-only-service-token' }, 'DJANGO_INTERNAL_URL'],
   ]) {
     const before = warnings.mock.callCount();
-    const server = createBackend('template', options);
+    const server = createBackend('meny', options);
     assert.equal(warnings.mock.callCount(), before + 1);
     assert.ok(warnings.mock.calls.at(-1).arguments[0].includes(missing));
     let request;
@@ -124,7 +124,7 @@ test('missing auth configuration warns once and never contacts Django', async (t
     assert.equal(warnings.mock.callCount(), before + 1);
   }
   assert.equal(calls, 0);
-  createBackend('template', { djangoUrl: django, serviceToken: 'test-only-service-token' });
+  createBackend('meny', { djangoUrl: django, serviceToken: 'test-only-service-token' });
   assert.equal(warnings.mock.callCount(), 2);
 });
 
@@ -134,16 +134,16 @@ test('uses the configured session cookie without forwarding another apps session
     calls.push(request.headers.cookie);
     response.end(JSON.stringify({ user_id: 42 }));
   }));
-  const server = createBackend('template', {
+  const server = createBackend('meny', {
     djangoUrl: django, serviceToken: 'test-only-service-token',
-    sessionCookieName: 'template_sessionid',
+    sessionCookieName: 'meny_sessionid',
   });
   let request;
   server.on('request', incoming => { request = incoming; });
   const base = await listen(t, server);
-  await fetch(base, { headers: { Cookie: 'sessionid=prosango; template_sessionid=template' } });
+  await fetch(base, { headers: { Cookie: 'sessionid=prosango; meny_sessionid=template' } });
   assert.equal(request.userId, 42);
-  assert.deepEqual(calls, ['template_sessionid=template']);
+  assert.deepEqual(calls, ['meny_sessionid=template']);
   await fetch(base, { headers: { Cookie: 'sessionid=prosango' } });
   assert.equal(request.userId, null);
   assert.equal(calls.length, 1);

@@ -103,7 +103,7 @@ if _memcached_location:
         'default': {
             'BACKEND': 'django.core.cache.backends.memcached.PyMemcacheCache',
             'LOCATION': _memcached_location,
-            'KEY_PREFIX': os.environ.get('DJANGO_CACHE_KEY_PREFIX') or 'template',
+            'KEY_PREFIX': os.environ.get('DJANGO_CACHE_KEY_PREFIX') or 'meny',
             'OPTIONS': {'connect_timeout': 1, 'timeout': 1},
         }
     }

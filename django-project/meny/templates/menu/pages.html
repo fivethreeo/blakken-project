@@ -1,0 +1,100 @@
+{% load menu_tags %}
+{% get_menu_pages menu as pages %}
+<div class="source-pages" id="source-pages" data-book-pages data-next="Neste &gt;"
+  {% if user.is_authenticated and user.is_staff or user.is_authenticated and user.is_superuser %}data-csrf-token="{{ csrf_token }}"{% endif %}
+  {% if menu.show_toc %}data-toc="Innhold"{% endif %}>
+  {% for page in pages %}
+    <article data-menu-page="{{ page.turnpage_key }}" class="slide{% if page.layout == 'cover' or forloop.first or forloop.last %} cover-slide{% endif %}{% if forloop.first %} front-cover{% endif %}{% if forloop.last %} back-cover{% endif %}{% if page.turnpage_background or page.turnpage_spread_partner %} background-slide{% endif %}{% if forloop.first %} cover{% endif %}"
+      data-layout="{{ page.layout }}" data-overlay="{{ page.overlay }}"{% if page.text_shadow %} data-text-shadow{% endif %}{% if page.layout == 'panorama' or page.turnpage_spread_partner %} data-panorama{% endif %}
+      {% if page.is_continuation %}data-continuation data-toc-exclude id="{{ page.slug }}" aria-label="{{ page.name }} (fortsettelse)"{% else %}aria-labelledby="{{ page.slug }}"{% endif %}>
+      {% if forloop.first %}<div class="front-cover-content stack">{% endif %}
+      <header class="slide-header cluster">
+        <p class="slide-label">{{ page.decorative_title }}</p>
+        {% if not forloop.first and not forloop.last %}
+        <p class="slide-number">
+          <span data-page-number>{{ page.turnpage_page_number|stringformat:"02d" }}</span> /
+          <span data-page-total>{{ page.turnpage_total|stringformat:"02d" }}</span>
+        </p>
+        {% endif %}
+      </header>
+      {% if not page.is_continuation %}
+        <h2 id="{{ page.slug }}">{% if page.descriptive_title %}{{ page.descriptive_title }}{% else %}{{ page.heading }}{% endif %}</h2>
+        {% if page.content %}
+          <div class="slide-copy stack">{{ page.content|linebreaks }}</div>
+        {% endif %}
+      {% endif %}
+      {% if forloop.first %}</div>{% endif %}
+      {% if page.image and page.turnpage_background %}
+        <img class="spread-image {% if page.turnpage_spread %}spread-background{% else %}page-background{% endif %}"
+          src="{{ page.image.url }}" alt="">
+      {% endif %}
+      {% if page.turnpage_dishes %}
+        <ul class="menu-items stack">
+          {% for dish in page.turnpage_dishes %}
+            <li class="menu-item with-sidebar with-sidebar:right align-items:baseline">
+              <div class="stack">
+                <h3>{{ dish.name }}</h3>
+                {% if dish.description %}<p>{{ dish.description }}</p>{% endif %}
+                {% with allergens=dish|allergen_labels %}
+                  {% if allergens %}<p class="menu-allergens">Allergener: {{ allergens|join:", " }}</p>{% endif %}
+                {% endwith %}
+              </div>
+              <div class="menu-purchase stack">
+                {% if dish.price != None %}<p class="menu-price">{{ dish.price|floatformat:"-2" }} kr</p>{% endif %}
+                {% if user.is_authenticated and user.is_staff or user.is_authenticated and user.is_superuser %}
+                <div class="dish-actions cluster">
+                  <button class="dish-button cluster align-items:center justify-content:center" type="button"
+                    data-dish-action="edit" data-dish-id="{{ dish.pk }}"
+                    data-edit-url="{% url 'dish-detail' page.menu_id dish.pk %}"
+                    aria-label="Rediger {{ dish.name }}">
+                    <svg class="icon" aria-hidden="true" focusable="false">
+                      <use href="#edit" xlink:href="#edit"></use>
+                    </svg>
+                  </button>
+                  {% if dish.pk != page.turnpage_first_dish_id %}
+                  <button class="dish-button cluster align-items:center justify-content:center" type="button"
+                    data-dish-action="up" data-dish-id="{{ dish.pk }}"
+                    data-move-url="{% url 'move-dish' page.menu_id dish.pk %}"
+                    aria-label="Flytt {{ dish.name }} opp">
+                    <svg class="icon" aria-hidden="true" focusable="false">
+                      <use href="#arrowup" xlink:href="#arrowup"></use>
+                    </svg>
+                  </button>
+                  {% endif %}
+                  {% if dish.pk != page.turnpage_last_dish_id %}
+                  <button class="dish-button cluster align-items:center justify-content:center" type="button"
+                    data-dish-action="down" data-dish-id="{{ dish.pk }}"
+                    data-move-url="{% url 'move-dish' page.menu_id dish.pk %}"
+                    aria-label="Flytt {{ dish.name }} ned">
+                    <svg class="icon" aria-hidden="true" focusable="false">
+                      <use href="#arrowdown" xlink:href="#arrowdown"></use>
+                    </svg>
+                  </button>
+                  {% endif %}
+                </div>
+                {% else %}
+                <div class="cart-actions cluster">
+                  <button class="cart-button cluster align-items:center justify-content:center" type="button"
+                    data-cart-action="add" data-dish-id="{{ dish.pk }}"
+                    aria-label="Legg til {{ dish.name }} i handlekurven">
+                    <svg class="icon" aria-hidden="true" focusable="false">
+                      <use href="#cartadd" xlink:href="#cartadd"></use>
+                    </svg>
+                  </button>
+                  <button class="cart-button cluster align-items:center justify-content:center" type="button"
+                    data-cart-action="remove" data-dish-id="{{ dish.pk }}"
+                    aria-label="Fjern {{ dish.name }} fra handlekurven">
+                    <svg class="icon" aria-hidden="true" focusable="false">
+                      <use href="#cartremove" xlink:href="#cartremove"></use>
+                    </svg>
+                  </button>
+                </div>
+                {% endif %}
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </article>
+  {% endfor %}
+</div>

@@ -53,7 +53,7 @@ class ParallelTests(unittest.TestCase):
             self.assertEqual(launches[index].kwargs["env"]["HOST"], "127.0.0.1")
             self.assertEqual(launches[index].kwargs["env"]["PORT"], port)
         self.assertEqual(launches[4].kwargs["cwd"], run.PY_DIR)
-        self.assertEqual(launches[4].args[0][:5], [run.VENV_PYTHON, "-m", "celery", "--app=template", "worker"])
+        self.assertEqual(launches[4].args[0][:5], [run.VENV_PYTHON, "-m", "celery", "--app=meny", "worker"])
         self.assertIn("--pool=solo", launches[4].args[0])
         broker = launches[0].kwargs["env"]["CELERY_BROKER_URL"]
         self.assertTrue(broker.startswith("sqla+sqlite:///"))
@@ -261,7 +261,7 @@ class ParallelTests(unittest.TestCase):
             self.assertEqual(environment[name], "")
         self.assertNotIn("DJANGO_RELOAD_TRIGGER", environment)
         self.assertNotIn("RSBUILD_BASE_URL", environment)
-        self.file_mtime.assert_not_called()
+        self.file_mtime.assert_called_once_with(run.MASTER_ICONS_SVG)
 
     def test_external_service_url_overrides_survive_absent_directories(self):
         with (
@@ -278,6 +278,26 @@ class ParallelTests(unittest.TestCase):
             run.run_parallel([], {})
         self.assertEqual(self.popen.call_count, 5)
         self.file_mtime.assert_not_called()
+
+    def test_master_changes_generate_inline_svg_without_a_frontend(self):
+        self.sleep.side_effect = [None, KeyboardInterrupt]
+        self.file_mtime.side_effect = [1, 2]
+        with (
+            patch.object(run.os.path, "isdir", side_effect=lambda path: path != run.TS_DIR),
+            patch.object(run.time, "monotonic", side_effect=[0, 2]),
+            patch.object(run, "build_svg_icons") as build,
+        ):
+            run.run_parallel([], {})
+        build.assert_called_once_with()
+
+
+class IconGenerationTests(unittest.TestCase):
+    def test_build_uses_only_the_default_svg_output(self):
+        with patch.object(run.subprocess, "run") as process:
+            run.build_svg_icons()
+        process.assert_called_once_with(
+            [run.sys.executable, run.ICON_GENERATOR], cwd=run.ROOT_DIR, check=True,
+        )
 
 
 if __name__ == "__main__":

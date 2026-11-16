@@ -71,7 +71,7 @@ async function notify(
   reply(202, { matched_connections: matched });
 }
 
-export function createBackend(appName = 'template', options: BackendOptions = {}) {
+export function createBackend(appName = 'meny', options: BackendOptions = {}) {
   const auth = {
     djangoUrl: options.djangoUrl ?? process.env.DJANGO_INTERNAL_URL,
     serviceToken: options.serviceToken ?? process.env.DJANGO_INTERNAL_AUTH_TOKEN,

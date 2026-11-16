@@ -1,4 +1,4 @@
-# template-project
+# meny-project
 
 A starter with Django, an Rsbuild TypeScript frontend, HTTP and WebSocket
 backends, and Celery. The frontend includes only Every Layout styling and
@@ -61,11 +61,17 @@ and production builds. Parallel mode requires Django's autoreloader only when
 both Django and the frontend are present; Django without frontend accepts
 `--noreload`.
 
-Changes to `assets/master_icons.svg` regenerate
-`typescript-frontend/src/icons.ts` automatically; unchanged generated output
-is not rewritten. Thus, a manual icon generation run restarts Django only when
-Rsbuild emits a changed bundle. Icon watching is skipped when the frontend,
-master SVG, or generator is absent.
+Changes to `assets/master_icons.svg` regenerate the hidden SVG sprite collection
+at `django-project/meny/templates/includes/icons.svg` automatically. Django
+includes it inline in the page; UI icons can reference symbols with
+`<svg aria-hidden="true"><use href="#icon-id"></use></svg>`.
+Run `python assets/make_svg_icon_sprites.py` to generate it manually. There is no
+TypeScript registry or icon-font output. Both master layers start empty; empty
+masters generate an empty sprite without needing Inkscape. Nonempty artwork uses
+the existing Inkscape extraction pipeline. In either the Artwork or ViewBoxes
+layer, a rectangle defines a viewBox only when its ID exactly matches its
+Inkscape label and its ID does not match `rect\d+`. Unchanged output is not rewritten,
+and icon watching is skipped when Django, the master SVG, or generator is absent.
 
 Ports for present components must be different and between 1 and 65535;
 assignments for absent components are ignored. `HOST` controls where
@@ -125,17 +131,73 @@ optional. Deployment component switches remain explicit rather than inferred
 from deleted directories. Parallel mode leaves absent backends' generated URLs
 empty; explicit URLs for externally hosted services still work.
 
+## Automatic and manual continuation pages
+
+Set the menu-wide **Max dishes per first page** and **Max dishes per extra page**
+in admin (defaults: **4 / 5**). Dishes overflow automatically into continuation
+pages in their saved order. These are rendered pages, not additional database
+records; edit dishes on their original page. Covers are not split. Leave either
+limit blank to use manual pages only.
+
+You can also add a menu page in admin, tick **Continuation page**, and position
+it after its category and before the back cover. Assign its dishes manually.
+Manual continuations use the extra-page limit and can themselves overflow.
+
+Continuation pages keep their decorative feelgood heading and dishes, but omit
+the category title, introduction and contents entry. They still have page numbers
+and their own URL hash. Reusing the name/slug `Curry` generates collision-safe
+slugs such as `curry-to`, `curry-tre`, and `curry-fire`, including when adding
+several pages together in the nested admin. Existing hashes are unchanged.
+Automatic continuations use the same suffixes and skip hashes reserved by manual
+pages. Panorama images span the first pair rather than repeating on every extra
+page. Reload the menu after adding/reordering pages or changing limits or dish
+counts enough to change the number of rendered pages.
+
+Staff and superusers can move dishes up/down in the book or JavaScript text
+view, including across automatic continuation pages. Moves are saved in Django
+and refresh the reader in place. Edit opens a page-styled Imposter dialog for
+the dish's name, description, optional price and allergens. The editor uses
+hand-authored HTML and JSON `GET`/`PATCH` requests to
+`/menus/<menu_id>/dishes/<dish_id>/`, not Django forms. The top `Legg til`
+button opens a blank dish in the same category, saved with JSON `POST` to
+`/menus/<menu_id>/pages/<page_id>/dishes/`. `Slett` requires confirmation inside
+the editor before sending `DELETE` to the dish endpoint. Creation and deletion
+reload the category to rebuild continuation pages and padding. All mutations
+require a staff or superuser session and CSRF token. Saving edits refreshes the reader in place;
+if the edited content no longer fits the captured page dimensions, it reloads
+the book automatically to recalculate its size.
+
+## Refreshing menu content
+
+Django renders the menu pages through `meny/templates/menu/pages.html`, shared by
+the initial page and `GET /menus/<menu_id>/pages/`. The fragment view uses the
+current session and disables caching, so future login-dependent controls can be
+rendered in that template.
+
+After saving changes or completing login/logout, refresh the initialized reader:
+
+```js
+await window.menuReader.refresh();
+```
+
+This fetches fresh HTML, replaces the existing articles' content, updates contents
+labels, then awaits Turnpage's `rerenderAll()`. Article identities, generated pages,
+reading position and click-to-turn settings are preserved. Refreshes are queued;
+failed requests leave existing content untouched. Adding, removing, reordering or
+changing page layouts/anchors or the contents setting requires a page reload.
+Content still needs to fit the book's original capture dimensions.
+
 ## Standalone frontend HTML
 
 Edit `typescript-frontend/src/index.html` for a page served without Django.
 Rsbuild generates `dist/index.html` and inserts the built CSS and JavaScript
 automatically; Django continues to use its own template.
 
-For frontend deployment at `/template/` with assets at `/template/static/`, build
+For frontend deployment at `/meny/` with assets at `/meny/static/`, build
 from the repository root with the matching asset prefix:
 
 ```sh
-RSBUILD_ASSET_PREFIX=/template/static/ python3 run.py npm run build
+RSBUILD_ASSET_PREFIX=/meny/static/ python3 run.py npm run build
 ```
 
 In the Ansible application configuration:
@@ -143,8 +205,8 @@ In the Ansible application configuration:
 ```yaml
 app_django_enabled: false
 app_frontend_enabled: true
-app_frontend_html_location: /template/
-app_static_location: /template/static/
+app_frontend_html_location: /meny/
+app_static_location: /meny/static/
 celery_enabled: false
 celery_beat_enabled: false
 ```
@@ -175,7 +237,7 @@ typescript-ws-backend/
 `/healthz`. `typescript-ws-backend` serves `/healthz` over HTTP and echoes text
 and binary WebSocket messages at `/`. Both require Node 20 or newer and read
 `HOST`, `PORT`, and `APP_NAME` from the environment. Defaults are localhost,
-ports 8001/8002, and app name `template`.
+ports 8001/8002, and app name `meny`.
 
 Install and build locally from the repository root:
 
@@ -187,7 +249,7 @@ python run.py npm-ws-backend run build
 ```
 
 For development, use `npm-backend run dev` or `npm-ws-backend run dev` through
-the wrapper. Append `HOST=127.0.0.1 PORT=8001 APP_NAME=template` assignments to
+the wrapper. Append `HOST=127.0.0.1 PORT=8001 APP_NAME=meny` assignments to
 override the environment. Each directory also has its own `.env.example`;
 after building, Node's `--env-file=.env` option can load a local file explicitly.
 Run `python run.py npm-backend test` and `python run.py npm-ws-backend test` for
@@ -272,7 +334,7 @@ credentialed CORS separately for cross-origin browser requests.
 
 ### Job records and bulk results
 
-`template.models.Job` records a user, unique Celery task ID, and creation time.
+`meny.models.Job` records a user, unique Celery task ID, and creation time.
 Records are not created automatically: after submitting a task, save its ID
 with `Job.objects.create(user=request.user, task_id=task.id)`. Run
 `python run.py manage migrate` to create the table.
@@ -310,7 +372,7 @@ The response is `202 {"matched_connections": ...}`, including zero when the
 user is offline. This counts matched sockets, not browser acknowledgements.
 Notifications are not persisted or deduplicated; retries can deliver duplicates.
 
-`template.tasks.notify(result, user_id, event='task.finished')` is a Celery
+`meny.tasks.notify(result, user_id, event='task.finished')` is a Celery
 sender task. Configure `WS_INTERNAL_URL` as the private WS HTTP base URL,
 for example `http://127.0.0.1:8002/`, and set the same
 `WS_INTERNAL_NOTIFY_TOKEN` in Django/Celery and the WS process. `parallel`
@@ -319,7 +381,7 @@ or copy a token from Django's `.env` into Node.
 
 ```python
 from celery import chain
-from template.tasks import notify
+from meny.tasks import notify
 
 # work is your existing Celery task; its result becomes notify's first argument.
 chain(work.s(), notify.s(request.user.pk, 'work.finished')).apply_async()
@@ -362,24 +424,24 @@ trusted proxy; secure-cookie settings can be enabled independently for HTTPS.
 Memcached is optional. Set `DJANGO_MEMCACHED_LOCATION=127.0.0.1:11211` to use
 Django's `PyMemcacheCache` backend, with one-second connection/read timeouts.
 Leave it empty to retain Django's local-memory cache. Set
-`DJANGO_CACHE_KEY_PREFIX` to a distinct deployment name, such as `template` or
-`template_staging`, when sharing a cache server. Code accesses it through
+`DJANGO_CACHE_KEY_PREFIX` to a distinct deployment name, such as `meny` or
+`meny_staging`, when sharing a cache server. Code accesses it through
 `django.core.cache.cache`; this does not automatically cache views or sessions.
 Keep Memcached private and treat its data as disposable, not persistent storage.
 
-Celery uses `template` as its app and autodiscovers `tasks.py` in installed
+Celery uses `meny` as its app and autodiscovers `tasks.py` in installed
 Django apps. Configure `CELERY_BROKER_URL` with your RabbitMQ user/vhost and,
 if needed, `CELERY_RESULT_BACKEND`:
 
 ```sh
 cd django-project
-DJANGO_ENV_FILE=/path/to/runtime.env .venv/bin/celery -A template worker --loglevel=INFO
-DJANGO_ENV_FILE=/path/to/runtime.env .venv/bin/celery -A template beat --loglevel=INFO \
+DJANGO_ENV_FILE=/path/to/runtime.env .venv/bin/celery -A meny worker --loglevel=INFO
+DJANGO_ENV_FILE=/path/to/runtime.env .venv/bin/celery -A meny beat --loglevel=INFO \
   --schedule=/path/to/persistent/celerybeat-schedule
 ```
 
 Run only one Beat instance per application schedule. For production, use
-Gunicorn (`template.wsgi:application`) and systemd rather than development
+Gunicorn (`meny.wsgi:application`) and systemd rather than development
 servers.
 
 Build the frontend on your workstation before deployment. The matching

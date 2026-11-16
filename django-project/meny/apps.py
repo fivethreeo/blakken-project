@@ -7,8 +7,8 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 
 
-class TemplateConfig(AppConfig):
-    name = 'template'
+class MenyConfig(AppConfig):
+    name = 'meny'
 
     def ready(self):
         if not settings.INTERNAL_AUTH_TOKEN:

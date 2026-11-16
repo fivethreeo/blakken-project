@@ -1,4 +1,4 @@
-"""Build SVG or TypeScript icon output from icon bounding boxes in an SVG layer.
+"""Build an inline SVG sprite from icon bounding boxes in an SVG layer.
 
 The verified extraction pipeline is intentionally strict. Do not modify it without
 explicit approval; correct master SVG artwork before changing extraction behavior.
@@ -6,7 +6,6 @@ explicit approval; correct master SVG artwork before changing extraction behavio
 
 import argparse
 import copy
-import json
 import math
 from pathlib import Path
 import re
@@ -169,13 +168,11 @@ def _guide_bounds(rect, parent_map):
 
 def _guide_rectangles(root, layer_id):
     label_attribute = "{http://www.inkscape.org/namespaces/inkscape}label"
-    # Keep the caller-selected layer for old masters, and also recognize the
-    # stable label used by newer masters.  Artwork guides below supplement
-    # these sources; they must never replace the ViewBoxes collection.
     guide_layers = [
         layer
         for layer in root.findall(f".//{SVG}g")
-        if layer.get("id") == layer_id or layer.get(label_attribute) == "ViewBoxes"
+        if layer.get("id") == layer_id
+        or layer.get(label_attribute) in {"Artwork", "ViewBoxes"}
     ]
     if not guide_layers:
         raise ValueError(f"Could not find guide layer '{layer_id}'.")
@@ -203,22 +200,13 @@ def _guide_rectangles(root, layer_id):
 
     for layer in guide_layers:
         for rect in layer.findall(f".//{SVG}rect"):
-            # This was the historic behavior for the ViewBoxes source: retain
-            # named icon guides while ignoring Inkscape's anonymous rectN
-            # artwork rectangles.
-            if not re.fullmatch(r"rect\d+", rect.get("id", "")):
-                add_rectangle(rect)
-
-    # Sidebar controls live with the artwork. An exact label/id match makes a
-    # rectangle an intentional guide without treating ordinary artwork as one.
-    for artwork_layer in root.findall(f".//{SVG}g[@{label_attribute}='Artwork']"):
-        for rect in artwork_layer.findall(f".//{SVG}rect"):
             rect_id = rect.get("id")
-            if rect_id and rect.get(label_attribute) == rect_id:
+            if (
+                rect_id
+                and rect.get(label_attribute) == rect_id
+                and not re.fullmatch(r"rect\d+", rect_id)
+            ):
                 add_rectangle(rect)
-
-    if not rectangles:
-        raise ValueError(f"Guide layers have no rectangles.")
 
     return rectangles
 
@@ -231,7 +219,7 @@ def _flatten_svg(source_tree, output_svg, guide_ids):
 
     output_path = Path(output_svg)
     with tempfile.TemporaryDirectory(
-        prefix=".template-icon-flatten-", dir=output_path.parent
+        prefix=".meny-icon-flatten-", dir=output_path.parent
     ) as temp_dir:
         temp_dir = Path(temp_dir)
         artwork_path = temp_dir / "artwork.svg"
@@ -435,11 +423,13 @@ def _compile_icons(input_svg, squares_layer_id, require_all_guides=True):
     source_path = Path(input_svg)
     tree = ET.parse(source_path)
     rectangles = _guide_rectangles(tree.getroot(), squares_layer_id)
+    if not rectangles:
+        return []
     icons = []
     empty_guides = []
 
     with tempfile.TemporaryDirectory(
-        prefix=".template-icon-sprite-", dir=source_path.parent
+        prefix=".meny-icon-sprite-", dir=source_path.parent
     ) as temp_dir:
         flattened_path = Path(temp_dir) / "flattened.svg"
         _flatten_svg(
@@ -479,7 +469,9 @@ def _compile_icons(input_svg, squares_layer_id, require_all_guides=True):
 
 
 def _write_svg_sprite(icons, output_path):
-    sprite_sheet = ET.Element(f"{SVG}svg", {"style": "display: none"})
+    sprite_sheet = ET.Element(f"{SVG}svg", {
+        "style": "display: none", "aria-hidden": "true", "focusable": "false",
+    })
     defs = ET.SubElement(sprite_sheet, f"{SVG}defs")
     for rect_id, width, height, path_data in icons:
         symbol = ET.SubElement(
@@ -497,39 +489,8 @@ def _write_svg_sprite(icons, output_path):
             {"d": path_data, "fill": "currentColor"},
         )
 
-    output_tree = ET.ElementTree(sprite_sheet)
-    ET.indent(output_tree, space="  ")
-    output_tree.write(output_path, encoding="utf-8", xml_declaration=True)
-
-
-def _typescript_property(name):
-    if re.fullmatch(r"[A-Za-z_$][A-Za-z0-9_$]*", name):
-        return name
-    return json.dumps(name)
-
-
-def _write_typescript_icons(icons, output_path):
-    lines = [
-        "export interface IconSpec {",
-        "  width: number;",
-        "  height: number;",
-        "  path: string;",
-        "}",
-        "",
-        "export const icons = {",
-    ]
-    for name, width, height, path_data in icons:
-        lines.extend(
-            [
-                f"  {_typescript_property(name)}: {{",
-                f"    width: {width:g},",
-                f"    height: {height:g},",
-                f"    path: {json.dumps(path_data)},",
-                "  },",
-            ],
-        )
-    lines.extend(["} satisfies Record<string, IconSpec>;", ""])
-    contents = "\n".join(lines)
+    ET.indent(sprite_sheet, space="  ")
+    contents = ET.tostring(sprite_sheet, encoding="unicode") + "\n"
     if output_path.is_file() and output_path.read_text(encoding="utf-8") == contents:
         return
     output_path.write_text(contents, encoding="utf-8")
@@ -539,20 +500,14 @@ def compile_precise_spritesheet_by_layer_input(
     input_svg,
     output_path,
     squares_layer_id,
-    output_format="svg",
     require_all_guides=True,
 ):
-    """Create clipped icon paths as an SVG sprite sheet or TypeScript registry."""
+    """Create clipped icon paths as a hidden SVG sprite for inline inclusion."""
     output_path = Path(output_path)
     icons = _compile_icons(input_svg, squares_layer_id, require_all_guides)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    if output_format == "svg":
-        _write_svg_sprite(icons, output_path)
-    elif output_format == "ts":
-        _write_typescript_icons(icons, output_path)
-    else:
-        raise ValueError(f"Unsupported output format: {output_format}")
+    _write_svg_sprite(icons, output_path)
     print(f"Created {output_path} with {len(icons)} icons.")
 
 
@@ -562,7 +517,6 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, default=assets_dir / "master_icons.svg")
     parser.add_argument("--output", type=Path)
-    parser.add_argument("--format", choices=("svg", "ts"), default="svg")
     parser.add_argument("--layer", default="layer2", help="ID of the guide rectangle layer")
     parser.add_argument(
         "--allow-empty-guides",
@@ -574,15 +528,12 @@ def main():
     args = parser.parse_args()
 
     output_path = args.output or (
-        assets_dir / "production_icons.svg"
-        if args.format == "svg"
-        else project_dir / "typescript-frontend/src/icons.ts"
+        project_dir / "django-project/meny/templates/includes/icons.svg"
     )
     compile_precise_spritesheet_by_layer_input(
         args.input,
         output_path,
         args.layer,
-        args.format,
         args.require_all_guides,
     )
 
