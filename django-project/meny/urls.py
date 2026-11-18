@@ -19,7 +19,7 @@ from django.contrib.auth.views import LoginView, LogoutView
 from django.conf import settings
 from django.conf.urls.static import static
 from django.urls import include, path
-from .views import auth, delete_page, dish_detail, dish_list, index, job_results, menu_pages, move_dish, move_page, page_visibility
+from .views import auth, delete_page, dish_detail, dish_list, index, job_results, menu_data, menu_pages, move_dish, move_page, page_visibility
 from .orders import OrderAuthenticationForm, create_order, customer_order_auth, customer_orders, order_list, orders_page, order_status, shop_status
 
 urlpatterns = [
@@ -39,6 +39,7 @@ urlpatterns = [
     path('orders/mine/', customer_orders, name='customer-orders'),
     path('orders/<int:order_id>/status/', order_status, name='order-status'),
     path('menus/<int:menu_id>/orders/', create_order, name='create-order'),
+    path('menus/<int:menu_id>/data/', menu_data, name='menu-data'),
     path('menus/<int:menu_id>/pages/', menu_pages, name='menu-pages'),
     path('menus/<int:menu_id>/dishes/<int:dish_id>/', dish_detail, name='dish-detail'),
     path('menus/<int:menu_id>/pages/<int:page_id>/dishes/', dish_list, name='dish-list'),

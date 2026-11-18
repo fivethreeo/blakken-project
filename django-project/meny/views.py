@@ -14,7 +14,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
 from .celery import app
-from .models import ALLERGEN_CHOICES, Dish, Job, Menu, MenuPage, menu_page_groups
+from .models import ALLERGEN_CHOICES, Dish, Job, Menu, MenuPage, menu_page_groups, visible_menu_pages
 from .orders import ensure_order_channel, get_shop_status
 
 
@@ -24,6 +24,39 @@ def index(request):
     menu = get_object_or_404(Menu.objects.prefetch_related('pages__dishes'), pk=2)
     ensure_order_channel(request)
     return render(request, 'index.html', {'menu': menu, 'shop': get_shop_status()})
+
+
+@never_cache
+@require_GET
+def menu_data(request, menu_id):
+    menu = get_object_or_404(Menu.objects.prefetch_related('pages__dishes'), pk=menu_id)
+    pages = list(menu.pages.all())
+    visible_ids = {page.pk for page in visible_menu_pages(pages)}
+    categories = []
+    for group in menu_page_groups(pages):
+        category = group[0]
+        if category.pk not in visible_ids or category.layout == MenuPage.Layout.COVER:
+            continue
+        categories.append({
+            'id': category.pk,
+            'name': category.name,
+            'dishes': [
+                {
+                    'id': dish.pk,
+                    'name': dish.name,
+                    'description': dish.description,
+                    'price': format(dish.price, '.2f') if dish.price is not None else None,
+                    'allergens': dish.allergens,
+                }
+                for page in group if page.pk in visible_ids
+                for dish in page.dishes.all() if dish.is_visible
+            ],
+        })
+    return JsonResponse({
+        'id': menu.pk,
+        'name': menu.name,
+        'categories': categories,
+    })
 
 
 @never_cache

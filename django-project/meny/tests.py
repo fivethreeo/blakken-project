@@ -42,6 +42,100 @@ def runtime_test_task(value):
     return value.upper()
 
 
+class MenuDataTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.menu = Menu.objects.create(name='Dinner')
+        cls.front = MenuPage.objects.create(
+            menu=cls.menu, name='Front', layout='cover', position=0,
+        )
+        cls.category = MenuPage.objects.create(
+            menu=cls.menu, name='Mains', heading='Mains', position=1,
+        )
+        cls.continuation = MenuPage.objects.create(
+            menu=cls.menu, name='More mains', is_continuation=True, position=2,
+        )
+        cls.drinks = MenuPage.objects.create(
+            menu=cls.menu, name='Drinks', heading='Drinks', position=3,
+        )
+        cls.back = MenuPage.objects.create(
+            menu=cls.menu, name='Back', layout='cover', position=4,
+        )
+        cls.later_dish = Dish.objects.create(
+            menu_page=cls.category, name='Pasta', price='125.50', position=2,
+            description='Fresh pasta', allergens=['gluten', 'eggs'],
+        )
+        cls.first_dish = Dish.objects.create(
+            menu_page=cls.category, name='Soup', price=None, position=1,
+        )
+        cls.extra_dish = Dish.objects.create(
+            menu_page=cls.continuation, name='Salad', price='0.00',
+        )
+
+    def test_public_response_groups_continuations_and_preserves_order_and_prices(self):
+        with self.assertNumQueries(3):
+            response = self.client.get(reverse('menu-data', args=[self.menu.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {
+            'id': self.menu.pk,
+            'name': 'Dinner',
+            'categories': [
+                {
+                    'id': self.category.pk,
+                    'name': 'Mains',
+                    'dishes': [
+                        {
+                            'id': self.first_dish.pk, 'name': 'Soup', 'description': '',
+                            'price': None, 'allergens': [],
+                        },
+                        {
+                            'id': self.later_dish.pk, 'name': 'Pasta',
+                            'description': 'Fresh pasta', 'price': '125.50',
+                            'allergens': ['gluten', 'eggs'],
+                        },
+                        {
+                            'id': self.extra_dish.pk, 'name': 'Salad', 'description': '',
+                            'price': '0.00', 'allergens': [],
+                        },
+                    ],
+                },
+                {'id': self.drinks.pk, 'name': 'Drinks', 'dishes': []},
+            ],
+        })
+        self.assertIn('no-store', response.headers['Cache-Control'])
+
+    def test_hidden_categories_continuations_dishes_and_covers_are_not_exposed(self):
+        Dish.objects.create(menu_page=self.front, name='Cover dish')
+        Dish.objects.create(menu_page=self.back, name='Back cover dish')
+        Dish.objects.create(menu_page=self.category, name='Hidden dish', is_visible=False)
+        self.continuation.is_visible = False
+        self.continuation.save()
+        url = reverse('menu-data', args=[self.menu.pk])
+        categories = self.client.get(url).json()['categories']
+        self.assertEqual(
+            [dish['id'] for dish in categories[0]['dishes']],
+            [self.first_dish.pk, self.later_dish.pk],
+        )
+
+        self.category.is_visible = False
+        self.category.save()
+        self.continuation.is_visible = True
+        self.continuation.save()
+        self.assertEqual(
+            self.client.get(url).json()['categories'],
+            [{'id': self.drinks.pk, 'name': 'Drinks', 'dishes': []}],
+        )
+
+    def test_unknown_menu_is_not_found_and_writes_are_rejected(self):
+        self.assertEqual(
+            self.client.get(reverse('menu-data', args=[999999])).status_code, 404,
+        )
+        url = reverse('menu-data', args=[self.menu.pk])
+        for method in ('post', 'put', 'patch', 'delete'):
+            with self.subTest(method=method):
+                self.assertEqual(getattr(self.client, method)(url).status_code, 405)
+
+
 class MenuAdminTests(TestCase):
     def test_menu_pages_and_dishes_are_ordered_by_position(self):
         menu = Menu.objects.create(name='Dinner', show_toc=False)
