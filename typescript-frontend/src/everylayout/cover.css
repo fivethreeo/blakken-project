@@ -1,0 +1,18 @@
+
+.cover {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 100vh;
+  min-block-size: 100svh;
+  row-gap: var(--space, var(--s0));
+}
+
+.cover > * {
+  margin-block: 0;
+}
+
+.cover > [data-cover-main] {
+  margin-block: auto;
+}
+
+/* Apply data-cover-main to the child that should be vertically centered. */

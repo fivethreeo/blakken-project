@@ -1,0 +1,20 @@
+{% load i18n rsbuild %}
+<!doctype html>
+<html lang="{{ LANGUAGE_CODE }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{% trans "Blakken for restaurants" %}{% endblock %}</title>
+  {% rsbuild_entry 'business' %}
+</head>
+<body>
+  <a class="skip-link" href="#main">{% trans "Skip to content" %}</a>
+  <header class="site-header cluster align-items:center justify-content:space-between">
+    <a class="wordmark" href="{% url 'index' %}">Blakken</a>
+    <nav aria-label="{% trans 'Main navigation' %}">
+      <a href="{% url 'restaurant-signup' %}">{% trans "Register your restaurant" %}</a>
+    </nav>
+  </header>
+  {% block content %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,30 @@
+{% extends "business_base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Restaurant ordering, made simple | Blakken" %}{% endblock %}
+{% block content %}
+<main id="main" class="business-shell center stack">
+  <section class="business-hero stack">
+    <p class="eyebrow">{% trans "A better way to serve your guests" %}</p>
+    <h1>{% trans "Your restaurant. Your menu. Your app." %}</h1>
+    <p class="lead">{% trans "Blakken gives restaurants their own customer app and a shared management app for menus and orders." %}</p>
+    <p><a class="action-link" href="{% url 'restaurant-signup' %}">{% trans "Register your restaurant" %}</a></p>
+  </section>
+  <section class="business-benefits grid">
+    <article class="benefit box stack">
+      <h2>{% trans "Your own customer app" %}</h2>
+      <p>{% trans "Give guests a dedicated app for your restaurant, with your menus and ordering." %}</p>
+    </article>
+    <article class="benefit box stack">
+      <h2>{% trans "One place to manage" %}</h2>
+      <p>{% trans "Use the shared management app to keep menus and orders up to date." %}</p>
+    </article>
+    <article class="benefit box stack">
+      <h2>{% trans "You stay in control" %}</h2>
+      <p>{% trans "Create an account to request access. Our team activates each restaurant before it goes live." %}</p>
+    </article>
+  </section>
+</main>
+<footer class="site-footer center">
+  <p>{% trans "Blakken — tools for independent restaurants." %}</p>
+</footer>
+{% endblock %}

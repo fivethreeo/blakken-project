@@ -1,0 +1,23 @@
+<resources>
+    <string name="app_name">Maharaja</string>
+    <string name="loading">Loading menu…</string>
+    <string name="closed">Ordering is closed</string>
+    <string name="open">Ordering is open</string>
+    <string name="unavailable">Menu is unavailable</string>
+    <string name="retry">Try again</string>
+    <string name="refresh">Refresh</string>
+    <string name="currency">NOK</string>
+    <string name="add_one">Add one</string>
+    <string name="remove_one">Remove one</string>
+    <string name="quantity_count">Quantity: %1$d</string>
+    <string name="cart">Cart</string>
+    <string name="confirmation">Order confirmed</string>
+    <string name="order_number">Order</string>
+    <string name="checkout">Checkout</string>
+    <string name="customer_name">Your name</string>
+    <string name="phone">Phone number</string>
+    <string name="order_note">Order note (optional)</string>
+    <string name="place_order">Place order</string>
+    <string name="request_failed">The request failed. Try again.</string>
+    <string name="blakken_logo_description">Blakken horse logo</string>
+</resources>

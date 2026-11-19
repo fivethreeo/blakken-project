@@ -1,0 +1,23 @@
+{% extends "business_base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Register your restaurant | Blakken" %}{% endblock %}
+{% block content %}
+<main id="main" class="business-shell center stack">
+  <section class="signup-panel box stack">
+    <h1>{% trans "Register your restaurant" %}</h1>
+    <p>{% trans "Create an account to request a Blakken restaurant profile. Your restaurant will remain inactive until our team approves it." %}</p>
+    <form method="post" class="signup-form stack" novalidate>
+      {% csrf_token %}
+      {{ form.non_field_errors }}
+      {% for field in form %}
+        <div class="form-field stack">
+          {{ field.label_tag }}
+          {{ field }}
+          {{ field.errors }}
+        </div>
+      {% endfor %}
+      <button class="action-link" type="submit">{% trans "Create account" %}</button>
+    </form>
+  </section>
+</main>
+{% endblock %}

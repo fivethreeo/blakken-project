@@ -1,0 +1,87 @@
+{% load i18n rsbuild %}<!doctype html>
+<html lang="{{ LANGUAGE_CODE }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% trans "Orders" %}</title>
+  {% rsbuild_entry 'index' %}
+</head>
+<body class="no-js" data-ts-ws-backend-url="{{ ts_ws_backend_url }}">
+  <script>document.body.classList.replace('no-js', 'with-js');</script>
+  <main class="menu-shell orders-shell center stack" data-orders data-orders-url="{% url 'order-list' %}"
+    data-restaurant-appid="{% if restaurant %}{{ restaurant.appid }}{% endif %}"
+    data-shop-url="{% if restaurant %}{% url 'management-shop-status' appid=restaurant.appid %}{% endif %}"
+    data-shop-open="{% if shop %}{{ shop.is_open|yesno:'true,false' }}{% endif %}">
+    <header class="cluster align-items:center justify-content:space-between">
+      <div class="menu-heading stack">
+        <h1>{% trans "Orders" %}</h1>
+        <p data-orders-connection role="status">{% trans "Connecting…" %}</p>
+      </div>
+      <nav class="reader-controls cluster align-items:center" aria-label="{% trans 'Order options' %}">
+        <a href="{% url 'index' %}">{% trans "Back to Blakken" %}</a>
+        <label>{% trans "Restaurant" %}
+          <select data-restaurant-filter>
+            <option value="all"{% if not restaurant %} selected{% endif %}>{% trans "All restaurants" %}</option>
+            {% for item in restaurants %}
+              <option value="{{ item.appid }}"{% if restaurant == item %} selected{% endif %}>{{ item.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>{% trans "Show" %}
+          <select data-orders-filter>
+          <option value="active">{% trans "Active" %}</option>
+          <option value="all">{% trans "All" %}</option>
+            {% for value, label in statuses %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+          </select>
+        </label>
+        <button type="button" data-orders-refresh>{% trans "Refresh" %}</button>
+        <span data-shop-status role="status"></span>
+        <button type="button" data-shop-toggle{% if not restaurant %} disabled{% endif %}>{% trans "Shop status…" %}</button>
+        <form method="post" action="{% url 'orders-logout' %}">
+          {% csrf_token %}
+          <button type="submit">{% trans "Log out" %}</button>
+        </form>
+      </nav>
+    </header>
+    <noscript>{% trans "Enable JavaScript to view and manage orders." %}</noscript>
+    <p class="render-error" data-orders-error role="alert" hidden></p>
+    <p data-orders-empty hidden>{% trans "No orders." %}</p>
+    <div class="grid orders-grid" data-orders-list></div>
+    <nav class="reader-controls cluster align-items:center justify-content:space-between" aria-label="{% trans 'Order pages' %}">
+      <button type="button" data-orders-previous disabled>{% trans "Previous" %}</button>
+      <p data-orders-page>{% trans "Page 1" %}</p>
+      <button type="button" data-orders-next disabled>{% trans "Next" %}</button>
+    </nav>
+    <dialog class="menu-editor cart-editor imposter contain box" data-order-cancel-dialog
+      aria-labelledby="order-cancel-title" aria-describedby="order-cancel-message">
+      <div class="stack">
+        <h2 id="order-cancel-title">{% trans "Cancel order?" %}</h2>
+        <p id="order-cancel-message" data-order-cancel-message></p>
+        <div class="reader-controls cluster align-items:center">
+          <button type="button" data-order-cancel-close>{% trans "Keep order" %}</button>
+          <button type="button" data-order-cancel-confirm>{% trans "Cancel order" %}</button>
+        </div>
+      </div>
+    </dialog>
+    <template data-order-card>
+      <article class="order-card box stack">
+        <header class="cluster align-items:baseline justify-content:space-between">
+          <h2 data-order-title></h2>
+          <strong data-order-status></strong>
+        </header>
+        <time data-order-created></time>
+        <div class="cluster align-items:baseline">
+          <strong data-order-customer></strong>
+          <p data-order-phone></p>
+        </div>
+        <p class="order-note" data-order-note></p>
+        <ul class="stack order-items" data-order-items></ul>
+        <footer class="cluster align-items:center justify-content:space-between">
+          <p>{% trans "Total:" %} <strong data-order-total></strong></p>
+          <div class="reader-controls cluster align-items:center" data-order-actions></div>
+        </footer>
+      </article>
+    </template>
+  </main>
+</body>
+</html>

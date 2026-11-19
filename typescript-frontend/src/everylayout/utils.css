@@ -1,0 +1,77 @@
+.justify-content\:space-between {
+  justify-content: space-between;
+}
+
+.justify-content\:space-around {
+  justify-content: space-around;
+}
+
+.justify-content\:center {
+  justify-content: center;
+}
+
+.justify-content\:flex-end {
+  justify-content: flex-end;
+}
+
+.align-items\:flex-start {
+  align-items: flex-start;
+}
+
+.align-items\:center {
+  align-items: center;
+}
+
+.align-items\:flex-end {
+  align-items: flex-end;
+}
+
+.align-items\:stretch {
+  align-items: stretch;
+}
+
+.align-items\:baseline {
+  align-items: baseline;
+}
+
+.vh {
+  clip-path: inset(100%) !important;
+  clip: rect(1px, 1px, 1px, 1px) !important;
+  height: 1px !important;
+  overflow: hidden !important;
+  position: absolute !important;
+  white-space: nowrap !important;
+  width: 1px !important;
+}
+
+.display\:block {
+  display: block !important;
+}
+
+.filter\:invert {
+  filter: invert(100%) !important;
+}
+
+.text-align\:center {
+  text-align: center !important;
+}
+
+.text-align\:left {
+  text-align: left !important;
+}
+
+.block-size\:50vb {
+  block-size: 50vb;
+}
+
+.block-size\:40vb {
+  block-size: 40vb;
+}
+
+.block-size\:30vb {
+  block-size: 30vb;
+}
+
+.block-size\:20vb {
+  block-size: 20vb;
+}

@@ -1,0 +1,23 @@
+<resources>
+    <string name="app_name">Maharaja</string>
+    <string name="loading">Laster meny …</string>
+    <string name="closed">Bestilling er stengt</string>
+    <string name="open">Bestilling er åpen</string>
+    <string name="unavailable">Menyen er ikke tilgjengelig</string>
+    <string name="retry">Prøv igjen</string>
+    <string name="refresh">Oppdater</string>
+    <string name="currency">NOK</string>
+    <string name="add_one">Legg til én</string>
+    <string name="remove_one">Fjern én</string>
+    <string name="quantity_count">Antall: %1$d</string>
+    <string name="cart">Handlekurv</string>
+    <string name="confirmation">Bestillingen er bekreftet</string>
+    <string name="order_number">Bestilling</string>
+    <string name="checkout">Bestill</string>
+    <string name="customer_name">Navnet ditt</string>
+    <string name="phone">Telefonnummer</string>
+    <string name="order_note">Merknad til bestillingen (valgfritt)</string>
+    <string name="place_order">Send bestilling</string>
+    <string name="request_failed">Forespørselen mislyktes. Prøv igjen.</string>
+    <string name="blakken_logo_description">Blakken-hestelogo</string>
+</resources>
