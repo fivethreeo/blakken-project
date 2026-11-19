@@ -1,4 +1,5 @@
 "management.title" = "Blakken Management";
+"management.demoLoginHint" = "Maharaja demo account email is prefilled.";
 "management.email" = "Email address";
 "management.password" = "Password";
 "management.signIn" = "Sign in";

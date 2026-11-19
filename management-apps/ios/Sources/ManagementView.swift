@@ -2,7 +2,7 @@ import SwiftUI
 
 struct ManagementView: View {
     @StateObject private var model = ManagementModel()
-    @State private var email = ""
+    @State private var email = "maharaja-demo@example.test"
     @State private var password = ""
     @State private var newMenuName = ""
 
@@ -51,6 +51,7 @@ struct ManagementView: View {
                     .frame(maxWidth: .infinity)
                     .accessibilityLabel(Text("management.logoDescription"))
             }
+            Text("management.demoLoginHint")
             TextField("management.email", text: $email)
                 .textContentType(.emailAddress)
                 .keyboardType(.emailAddress)

@@ -1,4 +1,5 @@
 "management.title" = "Blakken administrasjon";
+"management.demoLoginHint" = "E-postadressen til Maharajas demokonto er forhåndsutfylt.";
 "management.email" = "E-postadresse";
 "management.password" = "Passord";
 "management.signIn" = "Logg inn";
