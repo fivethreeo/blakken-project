@@ -191,8 +191,8 @@ private struct DishEditorView: View {
                                 name: name.trimmingCharacters(in: .whitespacesAndNewlines),
                                 description: description,
                                 price: price,
-                                isVisible: isVisible,
-                                allergens: dish.allergens
+                                allergens: dish.allergens,
+                                isVisible: isVisible
                             )
                         } else {
                             await model.createDish(
