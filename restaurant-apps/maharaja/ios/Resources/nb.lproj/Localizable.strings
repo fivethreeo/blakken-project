@@ -17,6 +17,10 @@
 "customer.removeFromCart %@" = "Fjern %@";
 "customer.confirmation" = "Bestillingen er bekreftet";
 "customer.orderNumber" = "Bestilling";
+"customer.orderStatus" = "Bestillingsstatus";
+"customer.orderStatusUnavailable" = "Bestillingsstatusen er ikke tilgjengelig akkurat nå.";
+"customer.liveConnected" = "Tilkoblet sanntidsoppdateringer";
+"customer.liveReconnecting" = "Kobler til sanntidsoppdateringer …";
 "customer.checkout" = "Bestill";
 "customer.name" = "Navnet ditt";
 "customer.phone" = "Telefonnummer";

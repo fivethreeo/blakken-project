@@ -17,6 +17,10 @@
 "customer.removeFromCart %@" = "Remove %@";
 "customer.confirmation" = "Order confirmed";
 "customer.orderNumber" = "Order";
+"customer.orderStatus" = "Order status";
+"customer.orderStatusUnavailable" = "The order status is unavailable right now.";
+"customer.liveConnected" = "Live updates connected";
+"customer.liveReconnecting" = "Connecting to live updates…";
 "customer.checkout" = "Checkout";
 "customer.name" = "Your name";
 "customer.phone" = "Phone number";

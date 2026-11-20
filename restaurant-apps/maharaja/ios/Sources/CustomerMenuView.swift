@@ -1,10 +1,17 @@
 import SwiftUI
 
+private struct OrderUpdateNotification: Decodable {
+    let event: String
+}
+
 @MainActor
 final class CustomerMenuModel: ObservableObject {
     @Published private(set) var menu: CustomerMenu?
     @Published private(set) var status: RestaurantStatus?
     @Published private(set) var orderReceipt: OrderReceipt?
+    @Published private(set) var orderStatus: CustomerOrderStatus?
+    @Published private(set) var orderStatusUnavailable = false
+    @Published private(set) var liveUpdatesConnected = false
     @Published private(set) var isLoading = false
     @Published private(set) var isSubmitting = false
     @Published var errorMessage: String?
@@ -16,6 +23,10 @@ final class CustomerMenuModel: ObservableObject {
     private let api = CustomerAPI()
     private var pendingSubmissionID: UUID?
     private var pendingSignature: String?
+    private var orderUpdatesSocket: URLSessionWebSocketTask?
+    private var socketListener: Task<Void, Never>?
+    private var reconnectTask: Task<Void, Never>?
+    private var reconnectDelay: UInt64 = 1_000_000_000
 
     var cartIsEmpty: Bool { quantities.values.allSatisfy { $0 == 0 } }
     var cartCount: Int { quantities.values.reduce(0, +) }
@@ -39,6 +50,7 @@ final class CustomerMenuModel: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
+        await connectOrderUpdates()
     }
 
     func setQuantity(_ quantity: Int, for dishID: Int) {
@@ -47,6 +59,13 @@ final class CustomerMenuModel: ObservableObject {
             quantities.removeValue(forKey: dishID)
         }
         orderReceipt = nil
+        orderStatus = nil
+        orderStatusUnavailable = false
+    }
+
+    func resumeLiveUpdates() async {
+        await connectOrderUpdates()
+        await refreshOrderStatus()
     }
 
     func placeOrder() async {
@@ -80,17 +99,105 @@ final class CustomerMenuModel: ObservableObject {
                 note: note.trimmingCharacters(in: .whitespacesAndNewlines),
                 items: items
             )
+            orderStatus = nil
+            orderStatusUnavailable = false
             quantities = [:]
             pendingSubmissionID = nil
             pendingSignature = nil
+            await refreshOrderStatus()
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private func connectOrderUpdates() async {
+        guard orderUpdatesSocket == nil, reconnectTask == nil else { return }
+        do {
+            try await api.prepareOrderUpdates()
+            let socket = try api.makeOrderUpdatesSocket()
+            orderUpdatesSocket = socket
+            socket.resume()
+            socketListener = Task { [weak self] in
+                await self?.receiveOrderUpdates(from: socket)
+            }
+            socket.sendPing { [weak self] error in
+                Task { @MainActor in
+                    guard let self, self.orderUpdatesSocket === socket else { return }
+                    if error == nil {
+                        self.liveUpdatesConnected = true
+                        self.reconnectDelay = 1_000_000_000
+                        await self.refreshOrderStatus()
+                    } else {
+                        self.disconnectOrderUpdates(socket)
+                        self.reconnectOrderUpdates()
+                    }
+                }
+            }
+        } catch {
+            liveUpdatesConnected = false
+            reconnectOrderUpdates()
+        }
+    }
+
+    private func receiveOrderUpdates(from socket: URLSessionWebSocketTask) async {
+        do {
+            while !Task.isCancelled {
+                let message = try await socket.receive()
+                guard orderUpdatesSocket === socket else { return }
+                guard case .string(let text) = message,
+                      let data = text.data(using: .utf8),
+                      let notification = try? JSONDecoder().decode(OrderUpdateNotification.self, from: data),
+                      notification.event == "orders.changed" else {
+                    continue
+                }
+                await refreshOrderStatus()
+            }
+        } catch {
+            guard orderUpdatesSocket === socket else { return }
+            disconnectOrderUpdates(socket)
+            reconnectOrderUpdates()
+        }
+    }
+
+    private func disconnectOrderUpdates(_ socket: URLSessionWebSocketTask) {
+        socket.cancel(with: .goingAway, reason: nil)
+        orderUpdatesSocket = nil
+        socketListener = nil
+        liveUpdatesConnected = false
+    }
+
+    private func reconnectOrderUpdates() {
+        guard reconnectTask == nil else { return }
+        let delay = reconnectDelay
+        reconnectDelay = min(reconnectDelay * 2, 15_000_000_000)
+        reconnectTask = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: delay)
+            } catch {
+                return
+            }
+            guard let self else { return }
+            self.reconnectTask = nil
+            await self.connectOrderUpdates()
+        }
+    }
+
+    private func refreshOrderStatus() async {
+        guard let orderID = orderReceipt?.order.id else { return }
+        do {
+            let orders = try await api.loadCustomerOrders()
+            guard orderReceipt?.order.id == orderID else { return }
+            orderStatus = orders.first { $0.id == orderID }
+            orderStatusUnavailable = orderStatus == nil
+        } catch {
+            orderStatusUnavailable = true
         }
     }
 }
 
 struct CustomerMenuView: View {
     @StateObject private var model = CustomerMenuModel()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationStack {
@@ -139,6 +246,11 @@ struct CustomerMenuView: View {
             }
             .task { await model.load() }
             .refreshable { await model.load() }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active {
+                    Task { await model.resumeLiveUpdates() }
+                }
+            }
         }
         .alert("customer.error", isPresented: Binding(
             get: { model.errorMessage != nil },
@@ -242,6 +354,18 @@ private struct CustomerCheckoutView: View {
                         Text("#\(receipt.order.id)")
                     }
                     Text("\(receipt.order.total) \(receipt.order.currency)")
+                }
+                Section("customer.orderStatus") {
+                    if let orderStatus = model.orderStatus {
+                        Text(orderStatus.statusLabel)
+                    } else if model.orderStatusUnavailable {
+                        Text("customer.orderStatusUnavailable")
+                    } else {
+                        ProgressView()
+                    }
+                    Text(model.liveUpdatesConnected ? "customer.liveConnected" : "customer.liveReconnecting")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
             }
 

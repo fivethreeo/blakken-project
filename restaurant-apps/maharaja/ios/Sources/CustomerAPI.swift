@@ -40,6 +40,15 @@ struct OrderSummary: Decodable {
     let currency: String
 }
 
+struct CustomerOrderStatus: Decodable, Identifiable {
+    let id: Int
+    let statusLabel: String
+}
+
+private struct CustomerOrders: Decodable {
+    let results: [CustomerOrderStatus]
+}
+
 private struct APIErrorBody: Decodable {
     let error: String
 }
@@ -59,6 +68,7 @@ private struct OrderLine: Encodable {
 
 struct CustomerAPI {
     private let baseURL: URL
+    private let webSocketBaseURL: URL?
     private let appid: String
 
     init() {
@@ -67,6 +77,10 @@ struct CustomerAPI {
             string: bundle.object(forInfoDictionaryKey: "API_BASE_URL") as? String
                 ?? "http://localhost:8000/"
         )!
+        webSocketBaseURL = URL(
+            string: bundle.object(forInfoDictionaryKey: "TS_WS_BACKEND_URL") as? String
+                ?? "ws://localhost:8002/"
+        )
         appid = bundle.object(forInfoDictionaryKey: "RESTAURANT_APP_ID") as? String
             ?? "REPLACE_WITH_RESTAURANT_APP_ID"
     }
@@ -77,6 +91,29 @@ struct CustomerAPI {
 
     func loadStatus() async throws -> RestaurantStatus {
         try await get("api/v1/restaurants/\(appid)/shop-status/")
+    }
+
+    func prepareOrderUpdates() async throws {
+        let _: CustomerSession = try await get("api/v1/customer/session/")
+    }
+
+    func loadCustomerOrders() async throws -> [CustomerOrderStatus] {
+        let response: CustomerOrders = try await get("orders/mine/")
+        return response.results
+    }
+
+    func makeOrderUpdatesSocket() throws -> URLSessionWebSocketTask {
+        guard let webSocketBaseURL, let origin else {
+            throw CustomerAPIError(message: "Invalid WebSocket configuration.")
+        }
+        let cookies = HTTPCookieStorage.shared.cookies(for: baseURL) ?? []
+        guard let cookieHeader = HTTPCookie.requestHeaderFields(with: cookies)["Cookie"] else {
+            throw CustomerAPIError(message: "Customer session is unavailable.")
+        }
+        var request = URLRequest(url: webSocketBaseURL.appending(path: "orders/"))
+        request.setValue(origin, forHTTPHeaderField: "Origin")
+        request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
+        return URLSession.shared.webSocketTask(with: request)
     }
 
     func placeOrder(
@@ -115,17 +152,22 @@ struct CustomerAPI {
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue(Locale.preferredLanguages.first ?? "en", forHTTPHeaderField: "Accept-Language")
-        if method == "POST", let scheme = baseURL.scheme, let host = baseURL.host {
-            let portSuffix: String
-            if let port = baseURL.port,
-               !((scheme == "https" && port == 443) || (scheme == "http" && port == 80)) {
-                portSuffix = ":\(port)"
-            } else {
-                portSuffix = ""
-            }
-            request.setValue("\(scheme)://\(host)\(portSuffix)", forHTTPHeaderField: "Origin")
+        if method == "POST", let origin {
+            request.setValue(origin, forHTTPHeaderField: "Origin")
         }
         return request
+    }
+
+    private var origin: String? {
+        guard let scheme = baseURL.scheme, let host = baseURL.host else { return nil }
+        let portSuffix: String
+        if let port = baseURL.port,
+           !((scheme == "https" && port == 443) || (scheme == "http" && port == 80)) {
+            portSuffix = ":\(port)"
+        } else {
+            portSuffix = ""
+        }
+        return "\(scheme)://\(host)\(portSuffix)"
     }
 
     private func send<Value: Decodable>(_ request: URLRequest) async throws -> Value {
