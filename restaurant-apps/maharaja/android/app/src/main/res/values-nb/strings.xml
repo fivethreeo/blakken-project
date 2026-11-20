@@ -2,6 +2,7 @@
     <string name="app_name">Maharaja</string>
     <string name="loading">Laster meny …</string>
     <string name="closed">Bestilling er stengt</string>
+    <string name="shop_closed_message">Restauranten tar ikke lenger imot bestillinger. Handlekurven og opplysningene dine er beholdt.</string>
     <string name="open">Bestilling er åpen</string>
     <string name="unavailable">Menyen er ikke tilgjengelig</string>
     <string name="retry">Prøv igjen</string>

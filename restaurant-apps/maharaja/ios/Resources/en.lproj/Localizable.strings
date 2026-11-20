@@ -1,6 +1,7 @@
 "customer.title" = "Maharaja";
 "customer.loading" = "Loading menu…";
 "customer.closed" = "Ordering is closed";
+"customer.shopClosedMessage" = "The restaurant is no longer taking orders. Your basket and details have been kept.";
 "customer.open" = "Ordering is open";
 "customer.unavailable" = "Menu is unavailable";
 "customer.retry" = "Try again";

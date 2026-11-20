@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -38,6 +39,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -77,14 +80,18 @@ private fun CustomerMenuScreen(lifecycle: Lifecycle) {
     var submitting by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var showingCheckout by remember { mutableStateOf(false) }
+    var showingShopClosedAlert by remember { mutableStateOf(false) }
     val menuScroll = rememberLazyListState()
     val checkoutScroll = rememberLazyListState()
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
 
     BackHandler(enabled = showingCheckout) {
         if (!submitting) showingCheckout = false
     }
 
     fun changeQuantity(dishId: Int, quantity: Int) {
+        if (status?.isOpen != true || submitting) return
         quantities = quantities.toMutableMap().apply {
             if (quantity <= 0) remove(dishId) else put(dishId, quantity.coerceAtMost(99))
         }
@@ -95,7 +102,14 @@ private fun CustomerMenuScreen(lifecycle: Lifecycle) {
     suspend fun refreshStatus() {
         val request = ++statusRequest
         val updated = api.status()
-        if (request == statusRequest) status = updated
+        if (request == statusRequest) {
+            if (status?.isOpen == true && !updated.isOpen) {
+                showingShopClosedAlert = true
+            } else if (updated.isOpen) {
+                showingShopClosedAlert = false
+            }
+            status = updated
+        }
     }
 
     fun reload() {
@@ -185,10 +199,30 @@ private fun CustomerMenuScreen(lifecycle: Lifecycle) {
     val cartItems = quantities.entries.mapNotNull { (id, quantity) ->
         dishMap[id]?.let { it to quantity }
     }
-    val canSubmit = status?.isOpen == true && cartItems.isNotEmpty()
-        && customerName.isNotBlank() && phone.isNotBlank() && !submitting
+    val canEditOrder = status?.isOpen == true && !submitting
+    val canSubmit = canEditOrder && cartItems.isNotEmpty()
+        && customerName.isNotBlank() && phone.isNotBlank()
+
+    LaunchedEffect(canEditOrder) {
+        if (!canEditOrder) {
+            focusManager.clearFocus()
+            keyboard?.hide()
+        }
+    }
 
     MaterialTheme {
+        if (showingShopClosedAlert) {
+            AlertDialog(
+                onDismissRequest = { showingShopClosedAlert = false },
+                title = { Text(stringResource(R.string.closed)) },
+                text = { Text(stringResource(R.string.shop_closed_message)) },
+                confirmButton = {
+                    TextButton(onClick = { showingShopClosedAlert = false }) {
+                        Text(stringResource(android.R.string.ok))
+                    }
+                },
+            )
+        }
         Column(
             modifier = Modifier.fillMaxSize().safeDrawingPadding().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -253,8 +287,8 @@ private fun CustomerMenuScreen(lifecycle: Lifecycle) {
                                                 )
                                                 dish.price?.let { Text("$it ${stringResource(R.string.currency)}") }
                                                 IconButton(
-                                                    enabled = dish.price != null
-                                                        && (quantities[dish.id] ?: 0) < 99 && !submitting,
+                                                    enabled = canEditOrder && dish.price != null
+                                                        && (quantities[dish.id] ?: 0) < 99,
                                                     onClick = { changeQuantity(dish.id, (quantities[dish.id] ?: 0) + 1) },
                                                 ) {
                                                     Icon(
@@ -290,7 +324,7 @@ private fun CustomerMenuScreen(lifecycle: Lifecycle) {
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
                                         IconButton(
-                                            enabled = quantity > 1 && !submitting,
+                                            enabled = canEditOrder && quantity > 1,
                                             onClick = { changeQuantity(dish.id, quantity - 1) },
                                         ) {
                                             Text("-", modifier = Modifier.clearAndSetSemantics {
@@ -302,7 +336,7 @@ private fun CustomerMenuScreen(lifecycle: Lifecycle) {
                                             modifier = Modifier.weight(1f),
                                         )
                                         IconButton(
-                                            enabled = quantity < 99 && !submitting,
+                                            enabled = canEditOrder && quantity < 99,
                                             onClick = { changeQuantity(dish.id, quantity + 1) },
                                         ) {
                                             Text("+", modifier = Modifier.clearAndSetSemantics {
@@ -311,7 +345,7 @@ private fun CustomerMenuScreen(lifecycle: Lifecycle) {
                                         }
                                     }
                                     TextButton(
-                                        enabled = !submitting,
+                                        enabled = canEditOrder,
                                         onClick = { changeQuantity(dish.id, 0) },
                                     ) { Text(stringResource(R.string.remove_from_cart, dish.name)) }
                                 }
@@ -341,7 +375,7 @@ private fun CustomerMenuScreen(lifecycle: Lifecycle) {
                                             Text(stringResource(R.string.closed))
                                         }
                                         OutlinedTextField(
-                                            enabled = !submitting,
+                                            enabled = canEditOrder,
                                             value = customerName,
                                             onValueChange = {
                                                 customerName = it
@@ -351,7 +385,7 @@ private fun CustomerMenuScreen(lifecycle: Lifecycle) {
                                             modifier = Modifier.fillMaxWidth(),
                                         )
                                         OutlinedTextField(
-                                            enabled = !submitting,
+                                            enabled = canEditOrder,
                                             value = phone,
                                             onValueChange = {
                                                 phone = it
@@ -362,7 +396,7 @@ private fun CustomerMenuScreen(lifecycle: Lifecycle) {
                                             modifier = Modifier.fillMaxWidth(),
                                         )
                                         OutlinedTextField(
-                                            enabled = !submitting,
+                                            enabled = canEditOrder,
                                             value = note,
                                             onValueChange = {
                                                 note = it

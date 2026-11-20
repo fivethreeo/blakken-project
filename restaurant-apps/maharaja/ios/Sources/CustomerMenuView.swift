@@ -15,6 +15,7 @@ final class CustomerMenuModel: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var isSubmitting = false
     @Published var errorMessage: String?
+    @Published var showingShopClosedAlert = false
     @Published var quantities: [Int: Int] = [:]
     @Published var customerName = ""
     @Published var phone = ""
@@ -39,9 +40,10 @@ final class CustomerMenuModel: ObservableObject {
     var cartDishes: [MenuDish] {
         (menu?.categories ?? []).flatMap(\.dishes).filter { (quantities[$0.id] ?? 0) > 0 }
     }
+    var canEditOrder: Bool { status?.isOpen == true && !isSubmitting }
     var canSubmit: Bool {
-        status?.isOpen == true && !cartIsEmpty && !customerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !phone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isSubmitting
+        canEditOrder && !cartIsEmpty && !customerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !phone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     func load() async {
@@ -58,7 +60,7 @@ final class CustomerMenuModel: ObservableObject {
             menu = try await loadedMenu
             let newStatus = try await loadedStatus
             if statusRequest == shopStatusRequest {
-                status = newStatus
+                applyShopStatus(newStatus)
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -67,6 +69,7 @@ final class CustomerMenuModel: ObservableObject {
     }
 
     func setQuantity(_ quantity: Int, for dishID: Int) {
+        guard canEditOrder else { return }
         quantities[dishID] = min(max(quantity, 0), 99)
         if quantities[dishID] == 0 {
             quantities.removeValue(forKey: dishID)
@@ -143,11 +146,20 @@ final class CustomerMenuModel: ObservableObject {
         do {
             let newStatus = try await api.loadStatus()
             if request == shopStatusRequest {
-                status = newStatus
+                applyShopStatus(newStatus)
             }
         } catch {
             // Keep the last known state; the server also checks availability at checkout.
         }
+    }
+
+    private func applyShopStatus(_ newStatus: RestaurantStatus) {
+        if status?.isOpen == true && !newStatus.isOpen {
+            showingShopClosedAlert = true
+        } else if newStatus.isOpen {
+            showingShopClosedAlert = false
+        }
+        status = newStatus
     }
 
     private func connectShopUpdates() {
@@ -339,24 +351,36 @@ struct CustomerMenuView: View {
                     .disabled(model.menu == nil)
                 }
             }
-            .task { await model.load() }
             .refreshable { await model.load() }
-            .onChange(of: scenePhase) { _, phase in
-                if phase == .active {
-                    Task { await model.resumeLiveUpdates() }
-                } else {
-                    model.stopShopUpdates()
+        }
+        .task { await model.load() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                Task { await model.resumeLiveUpdates() }
+            } else {
+                model.stopShopUpdates()
+            }
+        }
+        .onDisappear { model.stopShopUpdates() }
+        .alert(LocalizedStringKey(model.showingShopClosedAlert ? "customer.closed" : "customer.error"), isPresented: Binding(
+            get: { model.showingShopClosedAlert || model.errorMessage != nil },
+            set: {
+                if !$0 {
+                    model.showingShopClosedAlert = false
+                    model.errorMessage = nil
                 }
             }
-            .onDisappear { model.stopShopUpdates() }
-        }
-        .alert("customer.error", isPresented: Binding(
-            get: { model.errorMessage != nil },
-            set: { if !$0 { model.errorMessage = nil } }
         )) {
-            Button("customer.ok") { model.errorMessage = nil }
+            Button("customer.ok") {
+                model.showingShopClosedAlert = false
+                model.errorMessage = nil
+            }
         } message: {
-            Text(model.errorMessage ?? "")
+            if model.showingShopClosedAlert {
+                Text("customer.shopClosedMessage")
+            } else {
+                Text(model.errorMessage ?? "")
+            }
         }
     }
 
@@ -395,7 +419,7 @@ struct CustomerMenuView: View {
                                 }
                                 .buttonStyle(.borderless)
                                 .accessibilityLabel(Text("customer.addToCart \(dish.name)"))
-                                .disabled(dish.price == nil || (model.quantities[dish.id] ?? 0) >= 99 || model.isSubmitting)
+                                .disabled(!model.canEditOrder || dish.price == nil || (model.quantities[dish.id] ?? 0) >= 99)
                             }
                             if !dish.description.isEmpty {
                                 Text(dish.description).foregroundStyle(.secondary)
@@ -445,6 +469,7 @@ private struct CustomerCheckoutView: View {
                     }
                 }
             }
+            .disabled(!model.canEditOrder)
             if let receipt = model.orderReceipt {
                 Section("customer.confirmation") {
                     HStack {
@@ -492,6 +517,7 @@ private struct CustomerCheckoutView: View {
                     }
                     .disabled(!model.canSubmit)
                 }
+                .disabled(!model.canEditOrder)
             }
         }
         .navigationTitle(Text("customer.checkout"))

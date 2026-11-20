@@ -467,7 +467,10 @@ ordering across the shop. The default is open. Visitors get a dismissible
 the shop closes or reopens, through the public `/shop/?appid=<restaurant-app-id>`
 WebSocket channel. Customer iOS and Android apps subscribe to that same
 tenant-specific channel, refetch availability on `shop.changed`, and immediately
-disable checkout while closed without discarding the basket. Shop updates do not
+disable order-entry and basket controls while closed without discarding the
+basket or entered details. An in-app alert appears when ordering closes,
+whether the customer is browsing the menu or already in checkout. Controls are
+enabled again when ordering reopens. Shop updates do not
 require an account, order, or attestation session and never include private order
 data. Native clients reconnect and refresh when returning to the foreground;
 Android also reconciles every 30 seconds. Updated native builds are required for

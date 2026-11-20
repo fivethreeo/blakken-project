@@ -1,6 +1,7 @@
 "customer.title" = "Maharaja";
 "customer.loading" = "Laster meny …";
 "customer.closed" = "Bestilling er stengt";
+"customer.shopClosedMessage" = "Restauranten tar ikke lenger imot bestillinger. Handlekurven og opplysningene dine er beholdt.";
 "customer.open" = "Bestilling er åpen";
 "customer.unavailable" = "Menyen er ikke tilgjengelig";
 "customer.retry" = "Prøv igjen";
