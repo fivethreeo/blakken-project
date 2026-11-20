@@ -18,7 +18,8 @@
     <string name="empty_cart">Handlekurven er tom.</string>
     <string name="back_to_menu">Meny</string>
     <string name="checkout_count">Til kassen (%1$d)</string>
-    <string name="confirmation">Bestillingen er bekreftet</string>
+    <string name="confirmation">Bestillingskvittering</string>
+    <string name="order_status_unavailable">Bestillingsstatusen er ikke tilgjengelig akkurat nå.</string>
     <string name="order_number">Bestilling</string>
     <string name="checkout">Bestill</string>
     <string name="customer_name">Navnet ditt</string>
