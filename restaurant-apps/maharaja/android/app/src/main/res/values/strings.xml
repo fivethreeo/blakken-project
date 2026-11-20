@@ -2,6 +2,7 @@
     <string name="app_name">Maharaja</string>
     <string name="loading">Loading menu…</string>
     <string name="closed">Ordering is closed</string>
+    <string name="shop_closed_message">The restaurant is no longer taking orders. Your basket and details have been kept.</string>
     <string name="open">Ordering is open</string>
     <string name="unavailable">Menu is unavailable</string>
     <string name="retry">Try again</string>
