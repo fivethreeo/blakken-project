@@ -1,6 +1,9 @@
 asgiref==3.12.1
+cbor2==5.6.5
 celery[sqlalchemy]==5.7.0
+cryptography==45.0.7
 Django==6.1.2
+google-auth[requests]==2.43.0
 PyJWT==2.10.1
 django-cors-headers==4.9.0
 django-filer==3.6.0

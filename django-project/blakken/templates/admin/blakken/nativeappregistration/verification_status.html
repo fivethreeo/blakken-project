@@ -1,0 +1,111 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block extrastyle %}
+  {{ block.super }}
+  <link rel="stylesheet" href="{% static 'blakken/verification-status.css' %}">
+{% endblock %}
+
+{% block breadcrumbs %}
+  <ol class="breadcrumbs">
+    <li><a href="{% url 'admin:index' %}">{% translate "Home" %}</a></li>
+    <li><a href="{{ configurations_url }}">{% translate "App verification settings" %}</a></li>
+    <li aria-current="page">{{ title }}</li>
+  </ol>
+{% endblock %}
+
+{% block content %}
+<div class="verification-status">
+  <p>{% translate "Local checks show missing server configuration. They do not prove that an official app can complete device verification." %}</p>
+  <p><a href="{{ configurations_url }}">{% translate "Manage app verification settings" %}</a></p>
+
+  <section class="module" aria-labelledby="provider-status">
+    <h2 id="provider-status">{% translate "Server and provider checks" %}</h2>
+    <ul>
+      <li>{% translate "App Attest provider:" %} {% if app_attest_enabled %}{% translate "Enabled" %}{% else %}{% translate "Disabled; iOS verification cannot complete." %}{% endif %}</li>
+      <li>{% translate "Apple trust root:" %} {% if apple_root_available %}{% translate "Bundled certificate is valid." %}{% else %}{% translate "Action required: bundled certificate missing, invalid, or expired." %}{% endif %}</li>
+      <li>{% translate "Play Integrity provider:" %} {% if play_integrity_enabled %}{% translate "Enabled" %}{% else %}{% translate "Disabled; Android verification cannot complete." %}{% endif %}</li>
+      <li>{% translate "Management login/refresh policy:" %} {% if management_verification_required %}<strong>{% translate "Verification required." %}</strong>{% else %}<strong>{% translate "Explicit opt-out: legacy login/refresh allowed." %}</strong>{% endif %}</li>
+      {% if management_verification_required and not management_local_app_available %}
+        <li><strong>{% translate "Action required: no management app passes local configuration checks." %}</strong></li>
+      {% endif %}
+    </ul>
+    <h3>{% translate "Google server credentials" %}</h3>
+    <p>{% if google_credentials.checked %}<strong>{% if google_credentials.ok %}{% translate "OAuth check passed." %}{% else %}{% translate "Action required." %}{% endif %}</strong> {% endif %}{{ google_credentials.message }}</p>
+    {% if can_check_credentials %}
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="check_google_credentials">
+        <p><button type="submit">{% translate "Check Google credentials" %}</button></p>
+      </form>
+      <p>{% translate "This explicit check may contact Google to discover credentials and obtain an OAuth access token. It does not decode a Play token, place an order, change settings, or display credentials." %}</p>
+    {% endif %}
+  </section>
+
+  <section class="module" aria-labelledby="tenant-policies">
+    <h2 id="tenant-policies">{% translate "Restaurant ordering policies" %}</h2>
+    {% for row in tenants %}
+      <h3>{{ row.restaurant.name }}</h3>
+      <p>
+        {% if row.restaurant.require_verified_orders %}
+          <strong>{% translate "Verified orders required." %}</strong>
+          {% if row.local_app_available %}
+            {% translate "App configuration found; store and device checks still required." %}
+          {% else %}
+            {% translate "Blocked: no customer app passes local configuration checks." %}
+          {% endif %}
+        {% else %}
+          <strong>{% translate "Explicit opt-out: regular orders allowed." %}</strong>
+        {% endif %}
+        {% if not row.restaurant.active %}{% translate "Restaurant is inactive." %}{% endif %}
+      </p>
+      <p>{% translate "App configurations:" %} {{ row.configured_apps }}</p>
+    {% empty %}
+      <p>{% translate "No restaurants configured." %}</p>
+    {% endfor %}
+    <p>{% translate "Missing settings and provider outages never remove a verification requirement. Change the restaurant policy explicitly only if unverified ordering is intended." %}</p>
+  </section>
+
+  <section class="module" aria-labelledby="app-checks">
+    <h2 id="app-checks">{% translate "Per-app local checks" %}</h2>
+    {% for row in apps %}
+      <h3><a href="{% url 'admin:blakken_nativeappregistration_change' row.app.pk %}">{{ row.app.name }}</a></h3>
+      <p>{{ row.app.get_platform_display }} / {{ row.app.get_role_display }}{% if row.app.restaurant %} / {{ row.app.restaurant.name }}{% endif %}</p>
+      <p>{% translate "App identity:" %} {{ row.app.app_id }}</p>
+      <p>{% translate "App configuration ID:" %} {{ row.app.pk }}</p>
+      <ul>
+        {% for check in row.checks %}
+          <li><strong>{% if check.ok %}{% translate "Passed:" %}{% else %}{% translate "Action required:" %}{% endif %}</strong> {{ check.label }}</li>
+        {% endfor %}
+      </ul>
+      <p>
+        {% if row.local_ok %}{% translate "Local app checks passed. Console setup, build settings and real-device verification remain unconfirmed." %}
+        {% else %}{% translate "Resolve the failed checks in app verification settings or server configuration." %}{% endif %}
+      </p>
+    {% empty %}
+      <p><strong>{% translate "Action required: no trusted apps configured." %}</strong> {% translate "Create customer app settings for each restaurant and shared management app settings for each platform." %}</p>
+    {% endfor %}
+  </section>
+
+  <section class="module" aria-labelledby="google-steps">
+    <h2 id="google-steps">{% translate "Google Play Integrity: remaining manual steps" %}</h2>
+    <ol>
+      <li>{% translate "Choose a Google Cloud project and enable the Play Integrity API. Blakken cannot confirm API enablement from an OAuth credential check." %} <a href="https://console.cloud.google.com/apis/library/playintegrity.googleapis.com">{% translate "Enable the API" %}</a></li>
+      <li>{% translate "In Play Console, select each Android app, open its Play Integrity settings, and link the intended Cloud project. Confirm the linked project number." %} <a href="https://developer.android.com/google/play/integrity/setup">{% translate "Google setup instructions" %}</a></li>
+      <li>{% translate "Configure Application Default Credentials for the Django process using an authorized service account. Keep credential files and keys outside Git and app packages, then use the credential check above." %} <a href="https://developer.android.com/google/play/integrity/standard#decrypt-verify">{% translate "Server verification instructions" %}</a></li>
+      <li>{% translate "Copy the Play App Signing certificate SHA-256 digest, not the upload/debug certificate. Convert it to base64url and add it to the app configuration's JSON list of certificate digests." %}</li>
+      <li>{% translate "Build for Play distribution with PLAY_INTEGRITY_REQUIRED=true, PLAY_INTEGRITY_CLOUD_PROJECT_NUMBER, APP_REGISTRATION_ID, and an HTTPS BLAKKEN_API_BASE_URL. Install through an appropriate Play testing/release track and test an order or management login and refresh." %}</li>
+    </ol>
+    <p><strong>{% translate "Not automatically verified:" %}</strong> {% translate "Play Console linking, API permissions, signing certificate ownership, build project number, Play licensing, and real-device integrity verdicts." %}</p>
+  </section>
+
+  <section class="module" aria-labelledby="apple-steps">
+    <h2 id="apple-steps">{% translate "Apple App Attest: remaining manual steps" %}</h2>
+    <ol>
+      <li>{% translate "Confirm the Apple App ID prefix and bundle ID match the configured app identity." %}</li>
+      <li>{% translate "Enable App Attest for the official signing setup, use the production entitlement, and set APP_ATTEST_REQUIRED and APP_REGISTRATION_ID in the signed app." %}</li>
+      <li>{% translate "Test an order or management login and refresh on a supported real device. SideStore/re-signed builds are not accepted by the strict policy." %} <a href="https://developer.apple.com/documentation/devicecheck/establishing-your-app-s-integrity">{% translate "Apple setup instructions" %}</a></li>
+    </ol>
+  </section>
+</div>
+{% endblock %}

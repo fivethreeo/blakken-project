@@ -1,0 +1,16 @@
+.verification-status {
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.verification-status :is(p, li, button) {
+  font-size: inherit;
+}
+
+.verification-status h2 {
+  font-size: 1.25rem;
+}
+
+.verification-status h3 {
+  font-size: 1.125rem;
+}

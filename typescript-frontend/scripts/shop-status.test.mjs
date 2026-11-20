@@ -9,6 +9,7 @@ const source = await readFile(new URL('../src/shop.ts', import.meta.url), 'utf8'
 const { outputText } = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 });
+const appid = 'ca7a0000-0000-4000-8000-000000000001';
 
 function setup(t, base, href) {
   const document = Object.assign(new EventTarget(), {
@@ -38,7 +39,7 @@ function setup(t, base, href) {
   };
   runInNewContext(outputText, context);
   context.exports.initShopStatus(
-    { dataset: { shopUrl: '/shop/status/', shopOpen: 'true' } },
+    { dataset: { shopUrl: '/shop/status/', shopOpen: 'true', restaurantAppid: appid } },
     (status) => states.push(status),
   );
   t.after(() => window.dispatchEvent(new Event('pagehide')));
@@ -58,7 +59,7 @@ for (const [base, href, expected] of [
   test(`connects to ${expected} from ${base}`, (t) => {
     const { sockets } = setup(t, base, href);
     assert.equal(sockets.length, 1);
-    assert.equal(sockets[0].url, expected);
+    assert.equal(sockets[0].url, `${expected}?appid=${appid}`);
   });
 }
 

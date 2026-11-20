@@ -216,7 +216,7 @@ def _receipt(order, status=200):
 
 @never_cache
 @require_POST
-def create_order(request, menu_id, appid=None):
+def create_order(request, menu_id, appid=None, *, verified_app_registration=None):
     data, error = _read_json(request)
     if error is not None:
         return error
@@ -272,10 +272,25 @@ def create_order(request, menu_id, appid=None):
                 or (appid and str(existing.restaurant.appid) != str(appid))
             ):
                 return JsonResponse({'error': _('Submission ID already used for another order.')}, status=409)
+            restaurant = existing.restaurant
+        else:
+            menu = get_object_or_404(Menu.objects.select_related('restaurant'), pk=menu_id)
+            if appid and str(menu.restaurant.appid) != str(appid):
+                return JsonResponse({'error': _('Menu not found.')}, status=404)
+            restaurant = menu.restaurant
+        verified = (
+            verified_app_registration is not None
+            and verified_app_registration.enabled
+            and verified_app_registration.role == 'customer'
+            and verified_app_registration.restaurant_id == restaurant.pk
+        )
+        if restaurant.require_verified_orders and not verified:
+            return JsonResponse({
+                'error': _('This restaurant only accepts orders from its verified app.'),
+                'code': 'app_verification_required',
+            }, status=403)
+        if existing:
             return _receipt(existing)
-        menu = get_object_or_404(Menu.objects.select_related('restaurant'), pk=menu_id)
-        if appid and str(menu.restaurant.appid) != str(appid):
-            return JsonResponse({'error': _('Menu not found.')}, status=404)
         if not menu.restaurant.active:
             return JsonResponse({'error': _('Restaurant not found.')}, status=404)
         shop, created = ShopStatus.objects.select_for_update().get_or_create(restaurant=menu.restaurant)

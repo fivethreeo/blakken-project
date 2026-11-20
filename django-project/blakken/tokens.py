@@ -14,7 +14,7 @@ class InvalidToken(Exception):
     pass
 
 
-def _encode(user, token_type, jti, lifetime):
+def _encode(user, token_type, jti, lifetime, app_registration=None):
     now = timezone.now()
     return jwt.encode({
         'sub': str(user.pk),
@@ -22,19 +22,26 @@ def _encode(user, token_type, jti, lifetime):
         'jti': str(jti),
         'iat': now,
         'exp': now + lifetime,
+        **({'app_registration': str(app_registration.pk)} if app_registration else {}),
     }, settings.JWT_SIGNING_KEY, algorithm='HS256')
 
 
-def issue_token_pair(user):
+def issue_token_pair(user, app_registration=None):
     jti = uuid4()
     expires_at = timezone.now() + timedelta(seconds=settings.JWT_REFRESH_TTL_SECONDS)
-    RefreshToken.objects.create(jti=jti, user=user, expires_at=expires_at)
+    RefreshToken.objects.create(
+        jti=jti, user=user, expires_at=expires_at, app_registration=app_registration,
+    )
     return {
         'access': _encode(
             user, 'access', uuid4(),
             timedelta(seconds=settings.JWT_ACCESS_TTL_SECONDS),
+            app_registration,
         ),
-        'refresh': _encode(user, 'refresh', jti, timedelta(seconds=settings.JWT_REFRESH_TTL_SECONDS)),
+        'refresh': _encode(
+            user, 'refresh', jti, timedelta(seconds=settings.JWT_REFRESH_TTL_SECONDS),
+            app_registration,
+        ),
         'access_expires_in': settings.JWT_ACCESS_TTL_SECONDS,
         'refresh_expires_in': settings.JWT_REFRESH_TTL_SECONDS,
     }
@@ -65,19 +72,23 @@ def user_from_access_token(raw_token):
 
 
 @transaction.atomic
-def rotate_refresh_token(raw_token):
+def rotate_refresh_token(raw_token, app_registration=None):
     payload = decode_token(raw_token, 'refresh')
+    expected_registration = str(app_registration.pk) if app_registration else None
+    if payload.get('app_registration') != expected_registration:
+        raise InvalidToken
     token = RefreshToken.objects.select_for_update().filter(
         jti=payload['jti'],
         user_id=payload['sub'],
         revoked_at__isnull=True,
         expires_at__gt=timezone.now(),
+        app_registration=app_registration,
     ).first()
     if token is None or not token.user.is_active:
         raise InvalidToken
     token.revoked_at = timezone.now()
     token.save(update_fields=['revoked_at'])
-    return issue_token_pair(token.user)
+    return issue_token_pair(token.user, app_registration)
 
 
 def revoke_refresh_token(raw_token):

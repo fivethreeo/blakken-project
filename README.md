@@ -19,6 +19,207 @@ installation, and Android workflows provide debug APKs. Each workflow asks for
 an API base URL reachable from the device; the Maharaja workflows also ask for
 the restaurant's public app ID.
 
+### Native app verification (required by default)
+
+Customer and management apps support **Apple App Attest** on iOS and **Google
+Play Integrity (Standard API)** on Android. Both providers can run together on
+the same multi-tenant Django deployment. Each platform supplies only its own
+proof: an iPhone does not need Google verification, and Android does not need
+Apple verification.
+
+Verification is **required by default**, independently of whether trusted app
+identities have been configured yet. Customer orders and management API
+login/refresh fail closed if verification cannot complete. Missing settings,
+disabled app configurations, disabled providers, or outages never automatically
+allow unverified requests. Strict clients never fall back to legacy routes.
+
+Native project defaults also require verification. Existing iOS SideStore and
+Android debug workflows explicitly opt out for their client builds, but that
+does not override server policy: those builds need the corresponding server
+opt-out below to submit orders or sign in.
+
+Install the updated Python requirements and apply migrations before activation:
+
+```sh
+python3 run.py setup
+python3 run.py manage migrate
+```
+
+The server environment contains provider-wide switches, the management API
+authentication policy, and server-side Google credentials. Defaults are:
+
+```dotenv
+DJANGO_APP_ATTEST_ENABLED=true
+DJANGO_PLAY_INTEGRITY_ENABLED=true
+DJANGO_MANAGEMENT_REQUIRE_APP_VERIFICATION=true
+```
+
+#### Enforcement and explicit opt-outs
+
+**Customer orders:** Each restaurant's **Require verified app orders** setting
+(`require_verified_orders`) defaults to `true`. Regular/web, SideStore, and debug
+orders are rejected with HTTP 403, including retries of saved orders. To
+deliberately allow unverified orders for a tenant, uncheck that setting in Django
+admin. This is the only customer-order opt-out; deleting or disabling its app
+verification settings does not unlock ordering.
+
+**Management API login/refresh:** Verification is required deployment-wide because
+the shared management app can access multiple tenants. Explicitly set
+`DJANGO_MANAGEMENT_REQUIRE_APP_VERIFICATION=false` to allow legacy management
+login/refresh for development, demos, or sideloaded apps. Without that opt-out,
+legacy token endpoints return HTTP 403 even when no management app is configured.
+This policy does not change Django admin/browser session login.
+
+The migration enables the customer policy for **existing and new restaurants**.
+Configure trusted apps and official builds before activating this on a live
+deployment, or explicitly opt out for tenants that still need web/sideload orders.
+The Maharaja development fixture explicitly opts out of customer verification;
+management demo login still needs the separate environment opt-out above.
+
+#### Verification status page
+
+Open **Django admin → Native app registrations → Verification status**, or visit
+`/admin/blakken/nativeappregistration/verification-status/`. The page shows
+customer ordering and management authentication policies, missing app settings,
+provider switches, certificate-digest checks, and actionable Apple/Google setup
+steps. Staff need view/change access to both app configurations and restaurants;
+starting a credential check additionally requires app-configuration change access.
+
+Loading the page performs local checks only. **Check Google credentials** is an
+explicit, CSRF-protected action that discovers the server's Application Default
+Credentials and tries to obtain an OAuth token using bounded network requests.
+It never displays credentials or tokens, changes policy, or decodes a Play token.
+A successful OAuth check does **not** prove Play API enablement or permissions,
+Play Console project linking, certificate ownership, correct build configuration,
+or a valid real-device verdict. Those remaining steps are listed separately.
+
+#### Configuring app verification per tenant
+
+App verification settings tell the server which official apps to trust. This
+is configuration by the operator, not customer sign-up or device enrollment.
+In Django admin, create a verification configuration for each official app
+(currently labeled **Native app registration** in admin):
+
+| Field | Customer app | Management app |
+| --- | --- | --- |
+| Platform | `ios` or `android` | `ios` or `android` |
+| Role | `customer` | `management` |
+| Restaurant | The owning restaurant (required) | Empty (required) |
+| App ID | Apple App ID prefix + bundle ID, or Android package name | The management app's own Apple App ID or Android package |
+| Certificate digests | Android Play App Signing SHA-256 digests as a JSON list of base64url strings | Same for Android management builds |
+| Enabled | Allow this configured app to verify | Allow this configured app to verify |
+
+For example, Maharaja and a second restaurant each have their own customer iOS
+and Android verification configurations. The shared Blakken management app has
+two additional configurations, one per platform, with no restaurant selected. App identities are
+unique per platform; a customer app identity belongs to one restaurant, while a
+restaurant can have multiple app verification configurations.
+
+Copy the configuration's public UUID into that build's `APP_REGISTRATION_ID`.
+This is **different from `RESTAURANT_APP_ID`**, the restaurant UUID already used
+by customer builds. These configuration IDs
+are not secrets or authentication credentials. Strict clients send
+`X-App-Registration-ID` on challenges, Apple key registration, and protected
+requests. The server selects the expected identity from its configuration rather
+than trusting an app-supplied identity. Customer requests must match its
+restaurant, and the menu must belong to that restaurant.
+
+Challenges and Apple keys are scoped to both app configuration and session. A proof
+cannot cross tenants, app configurations, platforms, or customer/management roles.
+Disabling a configuration stops new verified operations for that app without
+disabling other tenants. Provider switches can disable all apps for one platform.
+The regular-order block is based on the restaurant's **Require verified app
+orders** policy, not app configuration, provider switches, or credential
+availability. Either platform's valid proof can authorize its
+restaurant's strict order route; enabling iOS does not require Android proof or
+vice versa. Disabling/deleting **all** customer app verification configurations
+leaves verified-only ordering enforced. Only explicitly changing the restaurant's
+policy permits unverified orders. Management app configurations do not affect
+customer ordering policy.
+
+#### Official build configuration
+
+**iOS:** Provision an officially signed app with the App Attest capability and
+production entitlement. The configured App ID is the actual Apple App ID
+prefix plus bundle ID (the prefix is often, but not always, the Team ID).
+Entitlement templates are provided at
+`restaurant-apps/maharaja/ios/AppAttest.production.entitlements` and
+`management-apps/ios/AppAttest.production.entitlements`. A separate official
+signing configuration must set `CODE_SIGN_ENTITLEMENTS` to the appropriate file,
+`INFOPLIST_KEY_APP_ATTEST_REQUIRED=YES`, and
+`INFOPLIST_KEY_APP_REGISTRATION_ID=<configuration-uuid>`. Strict clients require
+HTTPS. These settings are intentionally not enabled in the SideStore workflows.
+The server verifies Apple's certificate chain, production environment,
+official-app validation claims, assertion signatures, and counters. Unsupported
+devices and sideloaded/re-signed builds are not accepted by this strict policy.
+
+**Android:** Link the Play Console app to a Google Cloud project, enable the
+Play Integrity API, and configure server-side Application Default Credentials
+for a service account with access to decode tokens in that linked project.
+All Android app configurations use the deployment's ADC; its credentials must have
+access to verify the configured apps. Keep credentials outside Git and APKs.
+Store the **Play App Signing** certificate's SHA-256 digest (not the upload/debug
+certificate) as base64url, not colon-separated hexadecimal, in each app's configured
+JSON list, for example `["base64url-digest"]`. Add rotated certificates to that
+list. A separate Play-distributed customer or management build must set Gradle properties
+`PLAY_INTEGRITY_REQUIRED=true` and
+`PLAY_INTEGRITY_CLOUD_PROJECT_NUMBER=<linked-project-number>`, plus
+`APP_REGISTRATION_ID=<configuration-uuid>` and `BLAKKEN_API_BASE_URL`. Customer
+builds also need `MAHARAJA_APP_ID`; management builds retain
+`BLAKKEN_WS_BASE_URL` for live updates. The strict client requires HTTPS.
+The server requires matching package, certificate, and request hash, a fresh
+token, `PLAY_RECOGNIZED`, `MEETS_DEVICE_INTEGRITY`, and `LICENSED`; ordinary
+sideloaded debug APKs do not satisfy this policy.
+
+#### Protected operations
+
+All strict flows first establish a session using `GET /api/v1/customer/session/`
+and retain its cookies and CSRF token. The response includes an opaque
+`attestation_session` fingerprint so iOS key caching also distinguishes session
+resets. Single-use, five-minute challenges bind proofs to the exact request body.
+Customer proofs also bind the restaurant/menu; management proofs bind the
+app configuration and login/refresh operation. Missing or invalid proofs are rejected
+with HTTP 401; disabled/unavailable app configurations or providers return HTTP 503.
+Wrong customer-restaurant bindings return HTTP 404. CSRF protection still applies.
+Regular order requests to a restaurant whose policy requires app verification
+return HTTP 403 with code `app_verification_required`. Sending configuration ID or
+proof headers to a regular order route does not authorize it; verification must
+complete successfully through the appropriate strict endpoint.
+
+| Platform | Challenge / Apple key setup endpoints (POST) | Strict order endpoint (POST) |
+| --- | --- | --- |
+| iOS | `/api/v1/official/app-attest/challenges/`, `/api/v1/official/app-attest/keys/` | `/api/v1/official/restaurants/<appid>/menus/<menu_id>/orders/` |
+| Android | `/api/v1/official/android/play-integrity/challenges/` | `/api/v1/official/android/restaurants/<appid>/menus/<menu_id>/orders/` |
+
+Official management apps use the same platform-specific challenge/key routes,
+then send their proof with credentials to
+`POST /api/v1/official/management/<ios|android>/auth/token/`, or with a refresh
+token to `POST /api/v1/official/management/<ios|android>/auth/refresh/`.
+**Attestation is required on login and refresh, not on every management request.**
+Issued access tokens continue to work with the existing management HTTP and
+WebSocket APIs. User credentials and restaurant memberships are still required;
+attestation never grants access to additional restaurants.
+
+Verified refresh tokens are bound to their management app configuration and cannot
+be refreshed through the legacy endpoint or a different app configuration.
+Legacy refresh tokens cannot be upgraded through the strict endpoint; sign in
+again in the official app. Disabling an app blocks new verified login/refresh,
+but already-issued access tokens remain valid until normal expiry. Existing
+legacy login and refresh routes are usable only when the management server
+policy is explicitly opted out. Even with that opt-out, verified refresh tokens
+still cannot use legacy refresh.
+
+Run the backend verification and coexistence regression tests without building
+either app:
+
+```sh
+python3 run.py manage test blakken.test_app_attest blakken.test_play_integrity blakken.test_native_apps
+```
+
+This is prepared integration support, not a configured store release. Official
+signing, Google credentials/console setup, and real-device validation are still
+required; the existing workflows do not produce verified store builds.
+
 ## Maharaja demo data
 
 Load the fictional Maharaja restaurant into a development database with:
@@ -32,6 +233,25 @@ an owner account named `maharaja-demo@example.test`. The account has no usable
 password; set one with `python3 run.py manage changepassword
 maharaja-demo@example.test` before signing into a management app. Its restaurant
 app ID is `ca7a0000-0000-4000-8000-000000000001`.
+
+Alternatively, restore the current Sugar menu snapshot (9 categories, 17 dishes)
+with customer verification explicitly **off**:
+
+```sh
+python3 run.py manage loaddata blakken/fixtures/maharaja_current_unverified.json
+```
+
+This fixture contains only Maharaja's restaurant, menu, categories, and dishes;
+it includes no accounts, passwords, orders, or verification keys. Create an owner
+membership separately for a fresh database. Choose one Maharaja fixture, not
+both: they share the app ID but use different database primary keys. Loading a
+snapshot into an existing database can overwrite matching menu records.
+
+The fixture does not change management authentication. Sugar's private deployment
+configuration explicitly sets `app_management_require_app_verification: false`,
+which the matching Ansible role writes as
+`DJANGO_MANAGEMENT_REQUIRE_APP_VERIFICATION=false`. Other deployments keep the
+default-required policy.
 
 ## Development
 
@@ -244,7 +464,16 @@ The toolbar's **Logg ut** button ends the session and returns to the order login
 Staff can use **Steng butikken / Åpne butikken** to persistently close or open
 ordering across the shop. The default is open. Visitors get a dismissible
 30-second availability notice on entry. Open pages receive a live notice when
-the shop closes or reopens, through the public `/shop/` WebSocket channel.
+the shop closes or reopens, through the public `/shop/?appid=<restaurant-app-id>`
+WebSocket channel. Customer iOS and Android apps subscribe to that same
+tenant-specific channel, refetch availability on `shop.changed`, and immediately
+disable checkout while closed without discarding the basket. Shop updates do not
+require an account, order, or attestation session and never include private order
+data. Native clients reconnect and refresh when returning to the foreground;
+Android also reconciles every 30 seconds. Updated native builds are required for
+devices with older customer apps. Set iOS `TS_WS_BACKEND_URL` or Android
+`BLAKKEN_WS_BASE_URL` to the public WebSocket base URL, such as
+`wss://blakken.cavabonga.no/ws/`.
 Availability is also checked every 30 seconds, on reconnection, and when returning
 to the tab. While closed, checkout is disabled
 and the server rejects new orders, including from previously opened pages.
@@ -586,3 +815,9 @@ ansible-playbook -i ../ansible-home-cluster/provision-hosts/inventory.yml \
   -e @"$HOME/.config/home-cluster/blakken.yml" \
   -e @"$HOME/.config/home-cluster/blakken-secrets.yml" --ask-vault-pass
 ```
+
+Sugar's private configuration sets `app_collectstatic_clear: false`.
+The matching Ansible role updates collected assets without deleting uploaded app
+downloads under `/srv/blakken/static/ios/` and `/srv/blakken/static/android/`.
+Old hashed assets are retained too; do not clear static storage without first
+preserving app downloads.

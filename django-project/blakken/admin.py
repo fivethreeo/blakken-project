@@ -1,12 +1,18 @@
 from django import forms
 from django.contrib import admin
+from django.core.exceptions import PermissionDenied
+from django.template.response import TemplateResponse
+from django.urls import path, reverse
+from django.utils.decorators import method_decorator
 from django.utils.text import slugify
+from django.utils.translation import gettext as _
+from django.views.decorators.http import require_http_methods
 from adminsortable2.admin import SortableAdminMixin
 import nested_admin
 from nested_admin.formsets import NestedInlineFormSet
 
 from .models import (
-    ALLERGEN_CHOICES, Dish, Menu, MenuPage, Restaurant, RestaurantMembership,
+    ALLERGEN_CHOICES, Dish, Menu, MenuPage, NativeAppRegistration, Restaurant, RestaurantMembership,
 )
 
 
@@ -15,10 +21,66 @@ class RestaurantMembershipInline(admin.TabularInline):
     extra = 0
 
 
+@admin.register(NativeAppRegistration)
+class NativeAppRegistrationAdmin(admin.ModelAdmin):
+    list_display = ('name', 'platform', 'role', 'restaurant', 'enabled', 'id')
+    list_filter = ('platform', 'role', 'enabled')
+    search_fields = ('name', 'app_id', 'restaurant__name')
+    readonly_fields = ('id', 'created_at')
+    change_list_template = 'admin/blakken/nativeappregistration/change_list.html'
+
+    def has_verification_status_permission(self, request):
+        return self.has_view_or_change_permission(request) and (
+            request.user.has_perm('blakken.view_restaurant')
+            or request.user.has_perm('blakken.change_restaurant')
+        )
+
+    def get_urls(self):
+        return [
+            path(
+                'verification-status/',
+                self.admin_site.admin_view(self.verification_status),
+                name='blakken_nativeappregistration_verification_status',
+            ),
+            *super().get_urls(),
+        ]
+
+    def changelist_view(self, request, extra_context=None):
+        return super().changelist_view(request, {
+            **(extra_context or {}),
+            'show_verification_status': self.has_verification_status_permission(request),
+        })
+
+    @method_decorator(require_http_methods(['GET', 'POST']))
+    def verification_status(self, request):
+        from .verification_status import check_google_credentials, verification_status_context
+
+        if not self.has_verification_status_permission(request):
+            raise PermissionDenied
+        context = verification_status_context()
+        if request.method == 'POST':
+            if not self.has_change_permission(request):
+                raise PermissionDenied
+            if request.POST.get('action') == 'check_google_credentials':
+                context['google_credentials'] = check_google_credentials()
+        context.update({
+            **self.admin_site.each_context(request),
+            'opts': self.model._meta,
+            'title': _('App verification status'),
+            'can_check_credentials': self.has_change_permission(request),
+            'configurations_url': reverse(
+                f'{self.admin_site.name}:blakken_nativeappregistration_changelist',
+            ),
+        })
+        return TemplateResponse(
+            request, 'admin/blakken/nativeappregistration/verification_status.html', context,
+        )
+
+
 @admin.register(Restaurant)
 class RestaurantAdmin(admin.ModelAdmin):
-    list_display = ('name', 'active', 'appid', 'created_at')
-    list_filter = ('active',)
+    list_display = ('name', 'active', 'require_verified_orders', 'appid', 'created_at')
+    list_filter = ('active', 'require_verified_orders')
     search_fields = ('name', 'appid')
     readonly_fields = ('appid', 'created_at')
     inlines = (RestaurantMembershipInline,)

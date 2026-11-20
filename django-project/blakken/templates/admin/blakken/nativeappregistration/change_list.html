@@ -1,0 +1,9 @@
+{% extends "admin/change_list.html" %}
+{% load i18n %}
+
+{% block object-tools-items %}
+  {% if show_verification_status %}
+    <li><a href="{% url 'admin:blakken_nativeappregistration_verification_status' %}">{% translate "Verification status" %}</a></li>
+  {% endif %}
+  {{ block.super }}
+{% endblock %}

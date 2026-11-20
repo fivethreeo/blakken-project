@@ -19,6 +19,13 @@ from django.contrib.auth.views import LoginView, LogoutView
 from django.conf import settings
 from django.conf.urls.static import static
 from django.urls import include, path
+from .app_attest_views import (
+    app_attest_challenge, attest_app_key, create_attested_order,
+)
+from .play_integrity_views import (
+    create_play_integrity_order, play_integrity_challenge,
+)
+from .management_attest_views import management_attested_auth
 from .api import (
     create_management_category, create_management_dish, create_management_menu,
     customer_session, logout_tokens, management_category, management_dish,
@@ -45,6 +52,28 @@ urlpatterns = [
     path('api/v1/auth/refresh/', refresh_tokens, name='api-refresh'),
     path('api/v1/auth/logout/', logout_tokens, name='api-logout'),
     path('api/v1/customer/session/', customer_session, name='customer-session'),
+    path(
+        'api/v1/official/management/<str:platform>/auth/<str:operation>/',
+        management_attested_auth,
+        name='management-attested-auth',
+    ),
+    path('api/v1/official/app-attest/challenges/', app_attest_challenge, name='app-attest-challenge'),
+    path('api/v1/official/app-attest/keys/', attest_app_key, name='app-attest-key'),
+    path(
+        'api/v1/official/restaurants/<uuid:appid>/menus/<int:menu_id>/orders/',
+        create_attested_order,
+        name='attested-create-order',
+    ),
+    path(
+        'api/v1/official/android/play-integrity/challenges/',
+        play_integrity_challenge,
+        name='play-integrity-challenge',
+    ),
+    path(
+        'api/v1/official/android/restaurants/<uuid:appid>/menus/<int:menu_id>/orders/',
+        create_play_integrity_order,
+        name='play-integrity-create-order',
+    ),
     path('api/v1/management/restaurants/', management_restaurants, name='management-restaurants'),
     path('api/v1/management/restaurants/<uuid:appid>/orders/', management_orders, name='management-orders'),
     path('api/v1/management/restaurants/<uuid:appid>/orders/<int:order_id>/status/', management_order_status, name='management-order-status'),

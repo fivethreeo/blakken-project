@@ -39,6 +39,8 @@ jobs:
           -configuration Release
           -derivedDataPath build
           CODE_SIGNING_ALLOWED=NO
+          INFOPLIST_KEY_APP_ATTEST_REQUIRED=NO
+          INFOPLIST_KEY_APP_REGISTRATION_ID=""
           build
 
       - name: Configure API and WebSocket base URLs
@@ -58,12 +60,16 @@ jobs:
               info = plistlib.load(info_file)
           info["API_BASE_URL"] = os.environ["API_BASE_URL"]
           info["TS_WS_BACKEND_URL"] = os.environ["WEBSOCKET_BASE_URL"]
+          info["APP_ATTEST_REQUIRED"] = False
+          info["APP_REGISTRATION_ID"] = ""
           with info_path.open("wb") as info_file:
               plistlib.dump(info, info_file)
           with info_path.open("rb") as info_file:
               configured = plistlib.load(info_file)
           assert configured["API_BASE_URL"] == os.environ["API_BASE_URL"]
           assert configured["TS_WS_BACKEND_URL"] == os.environ["WEBSOCKET_BASE_URL"]
+          assert configured["APP_ATTEST_REQUIRED"] is False
+          assert configured["APP_REGISTRATION_ID"] == ""
           PY
 
       - name: Package unsigned IPA for SideStore

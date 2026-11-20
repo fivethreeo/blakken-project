@@ -1,6 +1,8 @@
+import hashlib
 import json
 from decimal import Decimal, InvalidOperation
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.contrib.auth import authenticate
 from django.db import transaction
@@ -51,7 +53,10 @@ def _form_errors(form):
 @require_GET
 def customer_session(request):
     ensure_order_channel(request)
-    return JsonResponse({'csrf_token': get_token(request)})
+    return JsonResponse({
+        'csrf_token': get_token(request),
+        'attestation_session': hashlib.sha256(request.session['order_channel'].encode()).hexdigest(),
+    })
 
 
 @never_cache
@@ -77,10 +82,25 @@ def register_restaurant(request):
     }, status=201)
 
 
+def _management_verification_error(request):
+    if (
+        settings.MANAGEMENT_REQUIRE_APP_VERIFICATION
+        and getattr(request, 'verified_app_registration', None) is None
+    ):
+        return JsonResponse({
+            'error': _('Management login and refresh require a verified app.'),
+            'code': 'app_verification_required',
+        }, status=403)
+    return None
+
+
 @never_cache
 @csrf_exempt
 @require_POST
 def obtain_tokens(request):
+    error = _management_verification_error(request)
+    if error is not None:
+        return error
     data, error = _read_json(request)
     if error:
         return error
@@ -93,7 +113,7 @@ def obtain_tokens(request):
     if user is None:
         return JsonResponse({'error': _('Invalid credentials.')}, status=401)
     return JsonResponse({
-        **issue_token_pair(user),
+        **issue_token_pair(user, getattr(request, 'verified_app_registration', None)),
         'user': {'id': user.pk, 'email': user.email},
     })
 
@@ -102,13 +122,18 @@ def obtain_tokens(request):
 @csrf_exempt
 @require_POST
 def refresh_tokens(request):
+    error = _management_verification_error(request)
+    if error is not None:
+        return error
     data, error = _read_json(request)
     if error:
         return error
     if set(data) != {'refresh'} or not isinstance(data.get('refresh'), str):
         return JsonResponse({'error': _('Invalid refresh token.')}, status=400)
     try:
-        tokens = rotate_refresh_token(data['refresh'])
+        tokens = rotate_refresh_token(
+            data['refresh'], getattr(request, 'verified_app_registration', None),
+        )
     except InvalidToken:
         return JsonResponse({'error': _('Invalid refresh token.')}, status=401)
     return JsonResponse(tokens)

@@ -55,6 +55,10 @@ class Job(models.Model):
 class Restaurant(models.Model):
     name = models.CharField(_('Restaurant name'), max_length=150)
     active = models.BooleanField(_('Active'), default=False)
+    require_verified_orders = models.BooleanField(
+        _('Require verified app orders'), default=True,
+        help_text=_('Disable explicitly to allow web, SideStore, or debug-client orders.'),
+    )
     appid = models.UUIDField(_('App ID'), default=uuid4, unique=True, editable=False)
     created_at = models.DateTimeField(_('Created at'), auto_now_add=True)
 
@@ -87,6 +91,68 @@ class RestaurantMembership(models.Model):
         ]
 
 
+class NativeAppRegistration(models.Model):
+    class Platform(models.TextChoices):
+        IOS = 'ios', 'iOS'
+        ANDROID = 'android', 'Android'
+
+    class Role(models.TextChoices):
+        CUSTOMER = 'customer', 'Customer'
+        MANAGEMENT = 'management', 'Management'
+
+    id = models.UUIDField(primary_key=True, default=uuid4, editable=False)
+    name = models.CharField(max_length=150)
+    platform = models.CharField(max_length=7, choices=Platform.choices)
+    role = models.CharField(max_length=10, choices=Role.choices)
+    restaurant = models.ForeignKey(
+        Restaurant, null=True, blank=True, on_delete=models.CASCADE,
+        related_name='native_apps',
+    )
+    app_id = models.CharField(
+        max_length=255,
+        help_text='Apple App ID prefix + bundle ID on iOS; package name on Android.',
+    )
+    certificate_digests = models.JSONField(
+        default=list, blank=True,
+        help_text='Android Play App Signing SHA-256 digests as a JSON list of base64url strings.',
+    )
+    enabled = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    Q(role='customer', restaurant__isnull=False)
+                    | Q(role='management', restaurant__isnull=True)
+                ),
+                name='native_app_restaurant_matches_role',
+            ),
+            models.UniqueConstraint(
+                fields=('platform', 'app_id'), name='unique_native_app_identity',
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        if (self.role == self.Role.CUSTOMER) != bool(self.restaurant_id):
+            raise ValidationError('Customer apps require a restaurant; management apps must not have one.')
+        if not isinstance(self.certificate_digests, list):
+            raise ValidationError({'certificate_digests': 'Expected a JSON list of certificate digests.'})
+        if self.platform == self.Platform.ANDROID:
+            from .play_integrity import normalize_certificate_digest
+            if (
+                (self.enabled and not self.certificate_digests)
+                or any(normalize_certificate_digest(value) is None for value in self.certificate_digests)
+            ):
+                raise ValidationError({
+                    'certificate_digests': 'Provide base64url SHA-256 Play App Signing certificate digests.',
+                })
+
+    def __str__(self):
+        return self.name
+
+
 class RefreshToken(models.Model):
     jti = models.UUIDField(unique=True)
     user = models.ForeignKey(
@@ -94,6 +160,58 @@ class RefreshToken(models.Model):
     )
     expires_at = models.DateTimeField()
     revoked_at = models.DateTimeField(null=True, blank=True)
+    app_registration = models.ForeignKey(
+        NativeAppRegistration, null=True, blank=True, on_delete=models.CASCADE,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class AppAttestChallenge(models.Model):
+    class Purpose(models.TextChoices):
+        ATTESTATION = 'attestation', 'Attestation'
+        ASSERTION = 'assertion', 'Assertion'
+
+    id = models.UUIDField(primary_key=True, default=uuid4, editable=False)
+    customer_channel = models.UUIDField(db_index=True)
+    app_registration = models.ForeignKey(
+        NativeAppRegistration, null=True, blank=True, on_delete=models.CASCADE,
+    )
+    purpose = models.CharField(max_length=12, choices=Purpose.choices)
+    challenge = models.BinaryField(max_length=32)
+    request_hash = models.CharField(max_length=64, blank=True)
+    expires_at = models.DateTimeField(db_index=True)
+    consumed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class AppAttestKey(models.Model):
+    class Environment(models.TextChoices):
+        PRODUCTION = 'production', 'Production'
+
+    key_id = models.CharField(max_length=64, unique=True)
+    customer_channel = models.UUIDField(db_index=True)
+    app_registration = models.ForeignKey(
+        NativeAppRegistration, null=True, blank=True, on_delete=models.CASCADE,
+    )
+    public_key = models.TextField()
+    app_id = models.CharField(max_length=255)
+    bundle_version = models.CharField(max_length=64)
+    validation_category = models.PositiveSmallIntegerField()
+    environment = models.CharField(max_length=12, choices=Environment.choices)
+    counter = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class PlayIntegrityChallenge(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid4, editable=False)
+    customer_channel = models.UUIDField(db_index=True)
+    app_registration = models.ForeignKey(
+        NativeAppRegistration, null=True, blank=True, on_delete=models.CASCADE,
+    )
+    challenge = models.BinaryField(max_length=32)
+    request_hash = models.CharField(max_length=64)
+    expires_at = models.DateTimeField(db_index=True)
+    consumed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
 

@@ -51,14 +51,17 @@ def create_test_menu(**kwargs):
     restaurant = kwargs.pop('restaurant', None)
     if restaurant is None:
         restaurant, _ = Restaurant.objects.get_or_create(
-            name='Test Restaurant', defaults={'active': True},
+            name='Test Restaurant', defaults={'active': True, 'require_verified_orders': False},
         )
     return Menu.objects.create(restaurant=restaurant, **kwargs)
 
 
+@override_settings(MANAGEMENT_REQUIRE_APP_VERIFICATION=False)
 class TenantApiTests(TestCase):
     def setUp(self):
-        self.restaurant = Restaurant.objects.create(name='Maharaja', active=True)
+        self.restaurant = Restaurant.objects.create(
+            name='Maharaja', active=True, require_verified_orders=False,
+        )
         self.other_restaurant = Restaurant.objects.create(name='Other restaurant', active=True)
         self.owner = get_user_model().objects.create_user(
             username='owner@example.com', email='owner@example.com', password='Tenant-test-password-1!',
@@ -108,6 +111,7 @@ class TenantApiTests(TestCase):
         restaurant = Restaurant.objects.get(appid=data['restaurant']['appid'])
         user = get_user_model().objects.get(email='new@example.com')
         self.assertFalse(restaurant.active)
+        self.assertTrue(restaurant.require_verified_orders)
         self.assertEqual(restaurant.name, 'New restaurant')
         self.assertEqual(restaurant.memberships.get().user, user)
         self.assertEqual(restaurant.memberships.get().role, RestaurantMembership.Role.OWNER)
@@ -450,6 +454,36 @@ class TenantApiTests(TestCase):
 
 
 class MaharajaDemoFixtureTests(TestCase):
+    def test_current_snapshot_preserves_menu_and_allows_unverified_orders_without_accounts(self):
+        fixture_path = Path(__file__).parent / 'fixtures' / 'maharaja_current_unverified.json'
+        call_command('loaddata', str(fixture_path), verbosity=0)
+
+        restaurant = Restaurant.objects.get(appid='ca7a0000-0000-4000-8000-000000000001')
+        menu = restaurant.menus.get(is_default=True)
+        self.assertTrue(restaurant.active)
+        self.assertFalse(restaurant.require_verified_orders)
+        self.assertEqual(menu.pk, 1000005)
+        self.assertEqual(menu.pages.count(), 9)
+        self.assertEqual(Dish.objects.filter(menu_page__menu=menu).count(), 17)
+        self.assertFalse(get_user_model().objects.exists())
+        response = self.client.get(reverse(
+            'public-default-menu', kwargs={'appid': restaurant.appid},
+        ))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.json()['categories']), 9)
+
+        dish = Dish.objects.filter(menu_page__menu=menu, price__isnull=False).first()
+        response = self.client.post(
+            reverse('restaurant-create-order', args=[restaurant.appid, menu.pk]),
+            {
+                'submission_id': str(uuid4()), 'customer_name': 'Fixture test guest',
+                'phone': '+47 123 45 678', 'note': '',
+                'items': [{'dish_id': dish.pk, 'quantity': 1}],
+            },
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 201, response.json())
+
     def test_loaddata_fixture_creates_public_restaurant_and_unusable_demo_owner(self):
         fixture_path = Path(__file__).parent / 'fixtures' / 'maharaja_demo.json'
         call_command('loaddata', str(fixture_path), verbosity=0)
@@ -1428,6 +1462,12 @@ class RuntimeSettingsTests(SimpleTestCase):
 
     def test_unconfigured_development_keeps_base_sqlite_database(self):
         self.assertNotIn('DATABASES', self.configuration())
+
+    def test_management_verification_requires_explicit_opt_out_even_in_debug(self):
+        config = self.configuration({'DJANGO_DEBUG': 'true'})
+        self.assertTrue(config['MANAGEMENT_REQUIRE_APP_VERIFICATION'])
+        config = self.configuration({'DJANGO_MANAGEMENT_REQUIRE_APP_VERIFICATION': 'false'})
+        self.assertFalse(config['MANAGEMENT_REQUIRE_APP_VERIFICATION'])
 
     def test_frontend_defaults_to_directory_presence_and_can_be_overridden(self):
         for present in (False, True):
