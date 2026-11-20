@@ -258,7 +258,7 @@ struct CustomerAPI {
         clientData.append(challengeData)
         clientData.append(bodyHash)
         let clientDataHash = Data(SHA256.hash(data: clientData))
-        let assertion = try await withCheckedThrowingContinuation { continuation in
+        let assertion: Data = try await withCheckedThrowingContinuation { continuation in
             service.generateAssertion(key, clientDataHash: clientDataHash) { assertion, error in
                 if let error {
                     continuation.resume(throwing: error)
@@ -289,7 +289,7 @@ struct CustomerAPI {
         if let key = keyStore.string(forKey: storageKey) {
             return key
         }
-        let key = try await withCheckedThrowingContinuation { continuation in
+        let key: String = try await withCheckedThrowingContinuation { continuation in
             service.generateKey { key, error in
                 if let error {
                     continuation.resume(throwing: error)
@@ -309,7 +309,7 @@ struct CustomerAPI {
             throw CustomerAPIError(message: "The server returned an invalid App Attest challenge.")
         }
         let clientDataHash = Data(SHA256.hash(data: challengeData))
-        let attestation = try await withCheckedThrowingContinuation { continuation in
+        let attestation: Data = try await withCheckedThrowingContinuation { continuation in
             service.attestKey(key, clientDataHash: clientDataHash) { object, error in
                 if let error {
                     continuation.resume(throwing: error)
