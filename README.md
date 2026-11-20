@@ -804,8 +804,18 @@ servers.
 Build the frontend on your workstation before deployment. The matching
 `ansible-home-cluster/deploy-app/deploy-code.yml` uploads this checkout's Django
 source and prebuilt frontend output, writes Vault-backed settings, runs
-PostgreSQL migrations and `collectstatic`, and manages Gunicorn/Celery.
+PostgreSQL migrations and `collectstatic`, optionally runs `compilemessages`, and
+manages Gunicorn/Celery.
 It does not run the frontend build on the deployment host.
+
+Set `app_compilemessages_enabled: true` in the private deployment configuration
+to install GNU gettext and compile translation catalogs before starting Django.
+The flag defaults to `false`; Blakken's Sugar configuration explicitly enables it.
+The `.po` sources alone are not used at runtime: without compiled
+`.mo` files, API order-status labels fall back to English even for Norwegian
+requests. For manual deployments, install GNU gettext, run
+`python3 run.py manage compilemessages`, and restart the Django processes after
+updating translations. Compiled catalogs are generated files and stay out of Git.
 
 The production deployment uses a separate `blakken.yml` and encrypted
 `blakken-secrets.yml` in `~/.config/home-cluster/`; keep both outside Git. Build
