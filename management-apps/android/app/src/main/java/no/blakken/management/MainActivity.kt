@@ -18,6 +18,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
@@ -73,6 +75,11 @@ private fun ManagementScreen(lifecycle: Lifecycle) {
     var selected by remember { mutableStateOf<Restaurant?>(null) }
     var menus by remember { mutableStateOf(emptyList<MenuItem>()) }
     var orders by remember { mutableStateOf(emptyList<OrderItem>()) }
+    var orderFilter by remember { mutableStateOf(OrderFilter.ACTIVE) }
+    var orderPage by remember { mutableStateOf(1) }
+    var orderPages by remember { mutableStateOf(1) }
+    var orderCount by remember { mutableStateOf(0) }
+    var orderSelection by remember { mutableStateOf(0) }
     var editingMenu by remember { mutableStateOf<MenuItem?>(null) }
     var menuContent by remember { mutableStateOf<MenuContent?>(null) }
     var shopStatus by remember { mutableStateOf<ShopStatus?>(null) }
@@ -114,15 +121,45 @@ private fun ManagementScreen(lifecycle: Lifecycle) {
         }
     }
 
+    fun resetOrders(filter: OrderFilter = OrderFilter.ACTIVE, page: Int = 1) {
+        orderSelection += 1
+        orderFilter = filter
+        orderPage = page
+        orders = emptyList()
+        if (page == 1) {
+            orderPages = 1
+            orderCount = 0
+        }
+    }
+
+    suspend fun fetchOrders(
+        restaurant: Restaurant, token: String, filter: OrderFilter, page: Int,
+    ): OrderPage = try {
+        api.orders(restaurant.appid, token, filter, page)
+    } catch (failure: ManagementApiError) {
+        if (failure.statusCode != 400 || page <= 1) throw failure
+        api.orders(restaurant.appid, token, filter, 1)
+    }
+
+    fun applyOrders(loaded: OrderPage) {
+        orders = loaded.results
+        orderPage = loaded.page
+        orderPages = loaded.pages
+        orderCount = loaded.count
+    }
+
     suspend fun loadRestaurant(restaurant: Restaurant, token: String) {
+        val filter = orderFilter
+        val page = orderPage
+        val selection = orderSelection
         val loadedMenus = api.menus(restaurant.appid, token)
         val loadedShopStatus = api.shopStatus(restaurant.appid, token)
         orderRefreshMutex.withLock {
-            val loadedOrders = api.orders(restaurant.appid, token)
+            val loadedOrders = fetchOrders(restaurant, token, filter, page)
             currentCoroutineContext().ensureActive()
             if (selected?.appid == restaurant.appid) {
                 menus = loadedMenus
-                orders = loadedOrders
+                if (orderSelection == selection) applyOrders(loadedOrders)
                 shopStatus = loadedShopStatus
             }
         }
@@ -148,11 +185,16 @@ private fun ManagementScreen(lifecycle: Lifecycle) {
     }
 
     suspend fun refreshOrders(restaurant: Restaurant) {
+        val filter = orderFilter
+        val page = orderPage
+        val selection = orderSelection
         orderRefreshMutex.withLock {
-            if (selected?.appid != restaurant.appid || accessToken == null) return@withLock
-            val loadedOrders = authenticated { token -> api.orders(restaurant.appid, token) }
+            if (selected?.appid != restaurant.appid || accessToken == null ||
+                orderSelection != selection || orderPage != page) return@withLock
+            val loadedOrders = authenticated { token -> fetchOrders(restaurant, token, filter, page) }
             currentCoroutineContext().ensureActive()
-            if (selected?.appid == restaurant.appid) orders = loadedOrders
+            if (selected?.appid == restaurant.appid && orderSelection == selection &&
+                orderPage == page) applyOrders(loadedOrders)
         }
     }
 
@@ -255,7 +297,7 @@ private fun ManagementScreen(lifecycle: Lifecycle) {
                                 onClick = {
                                     selected = restaurant
                                     menus = emptyList()
-                                    orders = emptyList()
+                                    resetOrders()
                                     shopStatus = null
                                     launchAction {
                                         authenticated { token -> loadRestaurant(restaurant, token) }
@@ -487,6 +529,34 @@ private fun ManagementScreen(lifecycle: Lifecycle) {
 
                         item {
                             Text(stringResource(R.string.orders), style = MaterialTheme.typography.titleMedium)
+                            OrderFilterPicker(
+                                selected = orderFilter,
+                                enabled = !loading,
+                                onSelect = { filter ->
+                                    resetOrders(filter)
+                                    launchAction { refreshOrders(restaurant) }
+                                },
+                            )
+                            Text(stringResource(R.string.order_count, orderCount))
+                            if (orderPages > 1) {
+                                Text(stringResource(R.string.order_page, orderPage, orderPages))
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button(
+                                        enabled = !loading && orderPage > 1,
+                                        onClick = {
+                                            resetOrders(orderFilter, orderPage - 1)
+                                            launchAction { refreshOrders(restaurant) }
+                                        },
+                                    ) { Text(stringResource(R.string.previous_page)) }
+                                    Button(
+                                        enabled = !loading && orderPage < orderPages,
+                                        onClick = {
+                                            resetOrders(orderFilter, orderPage + 1)
+                                            launchAction { refreshOrders(restaurant) }
+                                        },
+                                    ) { Text(stringResource(R.string.next_page)) }
+                                }
+                            }
                         }
                         if (orders.isEmpty()) {
                             item { Text(stringResource(R.string.empty_orders)) }
@@ -511,6 +581,42 @@ private fun ManagementScreen(lifecycle: Lifecycle) {
         }
     }
 }
+
+@Composable
+private fun OrderFilterPicker(
+    selected: OrderFilter,
+    enabled: Boolean,
+    onSelect: (OrderFilter) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Column {
+        TextButton(enabled = enabled, onClick = { expanded = true }) {
+            Text("${stringResource(R.string.order_filter)}: ${orderFilterTitle(selected)}")
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            OrderFilter.entries.forEach { filter ->
+                DropdownMenuItem(
+                    text = { Text(orderFilterTitle(filter)) },
+                    onClick = {
+                        expanded = false
+                        if (filter != selected) onSelect(filter)
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun orderFilterTitle(filter: OrderFilter): String = stringResource(when (filter) {
+    OrderFilter.ACTIVE -> R.string.filter_active
+    OrderFilter.ALL -> R.string.filter_all
+    OrderFilter.NEW -> R.string.filter_new
+    OrderFilter.PREPARING -> R.string.status_preparing
+    OrderFilter.READY -> R.string.status_ready
+    OrderFilter.COMPLETED -> R.string.filter_completed
+    OrderFilter.CANCELLED -> R.string.filter_cancelled
+})
 
 @Composable
 private fun MenuEditorScreen(

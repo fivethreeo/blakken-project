@@ -9,6 +9,16 @@
     <string name="restaurants">Restaurants</string>
     <string name="menus">Menus</string>
     <string name="orders">Orders</string>
+    <string name="order_filter">Order status</string>
+    <string name="filter_active">Active</string>
+    <string name="filter_all">All</string>
+    <string name="filter_new">New</string>
+    <string name="filter_completed">Completed</string>
+    <string name="filter_cancelled">Cancelled</string>
+    <string name="order_count">Orders: %1$d</string>
+    <string name="order_page">Page %1$d of %2$d</string>
+    <string name="previous_page">Previous</string>
+    <string name="next_page">Next</string>
     <string name="loading">Loading…</string>
     <string name="empty_restaurants">No restaurants are linked to this account.</string>
     <string name="empty_menus">No menus yet.</string>

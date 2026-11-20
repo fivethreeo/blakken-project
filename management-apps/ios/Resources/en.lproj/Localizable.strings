@@ -7,6 +7,16 @@
 "management.restaurants" = "Restaurants";
 "management.menus" = "Menus";
 "management.orders" = "Orders";
+"management.orderFilter" = "Order status";
+"management.filterActive" = "Active";
+"management.filterAll" = "All";
+"management.filterNew" = "New";
+"management.filterCompleted" = "Completed";
+"management.filterCancelled" = "Cancelled";
+"management.orderCount" = "Orders: %ld";
+"management.orderPage" = "Page %ld of %ld";
+"management.previousPage" = "Previous";
+"management.nextPage" = "Next";
 "management.loading" = "Loading…";
 "management.emptyRestaurants" = "No restaurants are linked to this account.";
 "management.emptyMenus" = "No menus yet.";

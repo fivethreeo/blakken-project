@@ -171,6 +171,36 @@ struct ManagementView: View {
             }
 
             Section("management.orders") {
+                Picker("management.orderFilter", selection: Binding(
+                    get: { model.orderFilter },
+                    set: { filter in Task { await model.filterOrders(filter) } }
+                )) {
+                    ForEach(ManagementOrderFilter.allCases, id: \.self) { filter in
+                        Text(orderFilterTitle(filter)).tag(filter)
+                    }
+                }
+                .pickerStyle(.menu)
+                .disabled(model.isLoading)
+                Text(String(format: String(localized: "management.orderCount"), model.orderCount))
+                    .foregroundStyle(.secondary)
+                if model.orderPages > 1 {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(String(format: String(localized: "management.orderPage"),
+                                    model.orderPage, model.orderPages))
+                        HStack {
+                            Button("management.previousPage") {
+                                Task { await model.showOrderPage(model.orderPage - 1) }
+                            }
+                            .disabled(model.isLoading || model.orderPage <= 1)
+                            Spacer()
+                            Button("management.nextPage") {
+                                Task { await model.showOrderPage(model.orderPage + 1) }
+                            }
+                            .disabled(model.isLoading || model.orderPage >= model.orderPages)
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                }
                 if model.orders.isEmpty {
                     Text("management.emptyOrders")
                         .foregroundStyle(.secondary)
@@ -194,6 +224,18 @@ struct ManagementView: View {
                 }
                 .disabled(model.isLoading)
             }
+        }
+    }
+
+    private func orderFilterTitle(_ filter: ManagementOrderFilter) -> String {
+        switch filter {
+        case .active: String(localized: "management.filterActive")
+        case .all: String(localized: "management.filterAll")
+        case .new: String(localized: "management.filterNew")
+        case .preparing: String(localized: "management.statusPreparing")
+        case .ready: String(localized: "management.statusReady")
+        case .completed: String(localized: "management.filterCompleted")
+        case .cancelled: String(localized: "management.filterCancelled")
         }
     }
 

@@ -65,6 +65,11 @@ data class OrderItem(
 )
 data class ShopStatus(val isOpen: Boolean)
 data class Tokens(val access: String, val refresh: String)
+enum class OrderFilter(val value: String) {
+    ACTIVE("active"), ALL("all"), NEW("new"), PREPARING("preparing"),
+    READY("ready"), COMPLETED("completed"), CANCELLED("cancelled"),
+}
+data class OrderPage(val results: List<OrderItem>, val count: Int, val page: Int, val pages: Int)
 
 class ManagementApi(private val context: Context) {
     private val websocketClient = OkHttpClient()
@@ -284,9 +289,12 @@ class ManagementApi(private val context: Context) {
         )
     }
 
-    suspend fun orders(appid: String, token: String): List<OrderItem> =
-        request("api/v1/management/restaurants/$appid/orders/", token = token)
-            .getJSONArray("results").let { rows ->
+    suspend fun orders(appid: String, token: String, filter: OrderFilter, page: Int): OrderPage {
+        val response = request(
+            "api/v1/management/restaurants/$appid/orders/?status=${filter.value}&page=$page",
+            token = token,
+        )
+        val results = response.getJSONArray("results").let { rows ->
                 (0 until rows.length()).map { index ->
                     val row = rows.getJSONObject(index)
                     val orderItems = row.getJSONArray("items")
@@ -312,6 +320,10 @@ class ManagementApi(private val context: Context) {
                     )
                 }
             }
+        return OrderPage(
+            results, response.getInt("count"), response.getInt("page"), response.getInt("pages"),
+        )
+    }
 
     suspend fun updateOrder(appid: String, order: OrderItem, status: String, token: String) {
         request(
