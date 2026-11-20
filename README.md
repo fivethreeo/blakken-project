@@ -468,7 +468,7 @@ the shop closes or reopens, through the public `/shop/?appid=<restaurant-app-id>
 WebSocket channel. Customer iOS and Android apps subscribe to that same
 tenant-specific channel, refetch availability on `shop.changed`, and immediately
 disable order-entry and basket controls while closed without discarding the
-basket or entered details. An in-app alert appears when ordering closes,
+basket or entered details. An in-app alert appears when ordering closes or reopens,
 whether the customer is browsing the menu or already in checkout. Controls are
 enabled again when ordering reopens. Shop updates do not
 require an account, order, or attestation session and never include private order

@@ -4,6 +4,7 @@
     <string name="closed">Ordering is closed</string>
     <string name="shop_closed_message">The restaurant is no longer taking orders. Your basket and details have been kept.</string>
     <string name="open">Ordering is open</string>
+    <string name="shop_opened_message">The restaurant is taking orders again. You can now place your order.</string>
     <string name="unavailable">Menu is unavailable</string>
     <string name="retry">Try again</string>
     <string name="refresh">Refresh</string>
