@@ -2450,8 +2450,10 @@ class OrderingTests(TestCase):
         self.assertIn('no-store', response['Cache-Control'])
         own = response.json()['results']
         self.assertEqual([order['id'] for order in own], [own_id])
-        self.assertEqual(set(own[0]), {'id', 'status', 'status_label', 'updated_at'})
+        self.assertEqual(set(own[0]), {'id', 'status', 'status_label', 'total', 'currency', 'updated_at'})
         self.assertEqual(own[0]['status'], 'new')
+        self.assertEqual(own[0]['total'], '251.00')
+        self.assertEqual(own[0]['currency'], 'NOK')
         self.assertNotContains(response, channel)
         self.assertNotContains(response, 'Test guest')
         self.assertNotContains(response, '+47 123 45 678')
@@ -2463,6 +2465,21 @@ class OrderingTests(TestCase):
         self.assertEqual(self.client.get(url).json()['results'][0]['status_label'], 'Klar')
         self.client.logout()
         self.assertEqual(self.client.get(url).json(), {'results': []})
+
+    def test_customer_can_follow_multiple_orders_with_independent_statuses_and_totals(self):
+        first_id = self.place().json()['order']['id']
+        data = self.payload()
+        data['items'][0]['quantity'] = 1
+        second_id = self.place(data).json()['order']['id']
+        Order.objects.filter(pk=first_id).update(status=Order.Status.CANCELLED)
+        url = reverse('customer-orders')
+        results = self.client.get(url).json()['results']
+        self.assertEqual([order['id'] for order in results], [second_id, first_id])
+        self.assertEqual(
+            [(order['status'], order['status_label'], order['total']) for order in results],
+            [('new', 'Ny', '125.50'), ('cancelled', 'Kansellert', '251.00')],
+        )
+        self.assertEqual(Order.objects.count(), 2)
 
     def test_lost_checkout_response_uses_the_session_established_before_checkout(self):
         self.client.get(reverse('customer-session'))
@@ -2496,6 +2513,7 @@ class OrderingTests(TestCase):
         results = self.client.get(url).json()['results']
         self.assertIn(
             {'id': oldest.pk, 'status': 'completed', 'status_label': 'Fullført',
+             'total': '1.00', 'currency': 'NOK',
              'updated_at': oldest.updated_at.isoformat()},
             results,
         )

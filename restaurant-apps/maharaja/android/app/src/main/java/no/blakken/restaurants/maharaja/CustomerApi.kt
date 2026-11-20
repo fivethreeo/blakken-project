@@ -36,7 +36,12 @@ data class Category(val id: Int, val name: String, val dishes: List<Dish>)
 data class CustomerMenu(val id: Int, val name: String, val categories: List<Category>)
 data class ShopStatus(val restaurant: String, val isOpen: Boolean, val message: String)
 data class OrderReceipt(val id: Int, val total: String, val currency: String)
-data class CustomerOrderStatus(val id: Int, val statusLabel: String)
+data class CustomerOrderStatus(
+    val id: Int,
+    val statusLabel: String?,
+    val total: String?,
+    val currency: String?,
+)
 
 class CustomerApi(private val context: Context) {
     private val websocketClient = OkHttpClient()
@@ -65,8 +70,16 @@ class CustomerApi(private val context: Context) {
         val results = request("orders/mine/").getJSONArray("results")
         return (0 until results.length()).map { index ->
             val order = results.getJSONObject(index)
-            CustomerOrderStatus(order.getInt("id"), order.getString("status_label"))
+            CustomerOrderStatus(
+                order.getInt("id"), order.getString("status_label"),
+                order.optString("total").takeIf { it.isNotBlank() },
+                order.optString("currency").takeIf { it.isNotBlank() },
+            )
         }
+    }
+
+    suspend fun prepareOrderUpdates() {
+        request("api/v1/customer/session/")
     }
 
     fun shopUpdates(): Flow<Unit> {
