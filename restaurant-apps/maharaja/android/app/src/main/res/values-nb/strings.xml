@@ -4,6 +4,7 @@
     <string name="closed">Bestilling er stengt</string>
     <string name="shop_closed_message">Restauranten tar ikke lenger imot bestillinger. Handlekurven og opplysningene dine er beholdt.</string>
     <string name="open">Bestilling er åpen</string>
+    <string name="shop_opened_message">Restauranten tar imot bestillinger igjen. Du kan nå sende bestillingen din.</string>
     <string name="unavailable">Menyen er ikke tilgjengelig</string>
     <string name="retry">Prøv igjen</string>
     <string name="refresh">Oppdater</string>

@@ -15,7 +15,7 @@ final class CustomerMenuModel: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var isSubmitting = false
     @Published var errorMessage: String?
-    @Published var showingShopClosedAlert = false
+    @Published var shopStatusAlertIsOpen: Bool?
     @Published var quantities: [Int: Int] = [:]
     @Published var customerName = ""
     @Published var phone = ""
@@ -154,10 +154,8 @@ final class CustomerMenuModel: ObservableObject {
     }
 
     private func applyShopStatus(_ newStatus: RestaurantStatus) {
-        if status?.isOpen == true && !newStatus.isOpen {
-            showingShopClosedAlert = true
-        } else if newStatus.isOpen {
-            showingShopClosedAlert = false
+        if let status, status.isOpen != newStatus.isOpen {
+            shopStatusAlertIsOpen = newStatus.isOpen
         }
         status = newStatus
     }
@@ -362,22 +360,24 @@ struct CustomerMenuView: View {
             }
         }
         .onDisappear { model.stopShopUpdates() }
-        .alert(LocalizedStringKey(model.showingShopClosedAlert ? "customer.closed" : "customer.error"), isPresented: Binding(
-            get: { model.showingShopClosedAlert || model.errorMessage != nil },
+        .alert(LocalizedStringKey(
+            model.shopStatusAlertIsOpen.map { $0 ? "customer.open" : "customer.closed" } ?? "customer.error"
+        ), isPresented: Binding(
+            get: { model.shopStatusAlertIsOpen != nil || model.errorMessage != nil },
             set: {
                 if !$0 {
-                    model.showingShopClosedAlert = false
+                    model.shopStatusAlertIsOpen = nil
                     model.errorMessage = nil
                 }
             }
         )) {
             Button("customer.ok") {
-                model.showingShopClosedAlert = false
+                model.shopStatusAlertIsOpen = nil
                 model.errorMessage = nil
             }
         } message: {
-            if model.showingShopClosedAlert {
-                Text("customer.shopClosedMessage")
+            if let isOpen = model.shopStatusAlertIsOpen {
+                Text(LocalizedStringKey(isOpen ? "customer.shopOpenedMessage" : "customer.shopClosedMessage"))
             } else {
                 Text(model.errorMessage ?? "")
             }

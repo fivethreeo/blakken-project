@@ -3,6 +3,7 @@
 "customer.closed" = "Bestilling er stengt";
 "customer.shopClosedMessage" = "Restauranten tar ikke lenger imot bestillinger. Handlekurven og opplysningene dine er beholdt.";
 "customer.open" = "Bestilling er åpen";
+"customer.shopOpenedMessage" = "Restauranten tar imot bestillinger igjen. Du kan nå sende bestillingen din.";
 "customer.unavailable" = "Menyen er ikke tilgjengelig";
 "customer.retry" = "Prøv igjen";
 "customer.refresh" = "Oppdater";

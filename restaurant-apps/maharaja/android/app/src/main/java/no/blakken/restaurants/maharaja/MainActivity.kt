@@ -80,7 +80,7 @@ private fun CustomerMenuScreen(lifecycle: Lifecycle) {
     var submitting by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var showingCheckout by remember { mutableStateOf(false) }
-    var showingShopClosedAlert by remember { mutableStateOf(false) }
+    var shopStatusAlertIsOpen by remember { mutableStateOf<Boolean?>(null) }
     val menuScroll = rememberLazyListState()
     val checkoutScroll = rememberLazyListState()
     val focusManager = LocalFocusManager.current
@@ -103,10 +103,8 @@ private fun CustomerMenuScreen(lifecycle: Lifecycle) {
         val request = ++statusRequest
         val updated = api.status()
         if (request == statusRequest) {
-            if (status?.isOpen == true && !updated.isOpen) {
-                showingShopClosedAlert = true
-            } else if (updated.isOpen) {
-                showingShopClosedAlert = false
+            if (status != null && status?.isOpen != updated.isOpen) {
+                shopStatusAlertIsOpen = updated.isOpen
             }
             status = updated
         }
@@ -211,13 +209,17 @@ private fun CustomerMenuScreen(lifecycle: Lifecycle) {
     }
 
     MaterialTheme {
-        if (showingShopClosedAlert) {
+        if (shopStatusAlertIsOpen != null) {
             AlertDialog(
-                onDismissRequest = { showingShopClosedAlert = false },
-                title = { Text(stringResource(R.string.closed)) },
-                text = { Text(stringResource(R.string.shop_closed_message)) },
+                onDismissRequest = { shopStatusAlertIsOpen = null },
+                title = { Text(stringResource(if (shopStatusAlertIsOpen == true) R.string.open else R.string.closed)) },
+                text = {
+                    Text(stringResource(
+                        if (shopStatusAlertIsOpen == true) R.string.shop_opened_message else R.string.shop_closed_message,
+                    ))
+                },
                 confirmButton = {
-                    TextButton(onClick = { showingShopClosedAlert = false }) {
+                    TextButton(onClick = { shopStatusAlertIsOpen = null }) {
                         Text(stringResource(android.R.string.ok))
                     }
                 },
