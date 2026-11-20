@@ -454,35 +454,35 @@ private fun CustomerMenuScreen(lifecycle: Lifecycle) {
                                             }
                                         }
                                     }
-                                    items(customerOrders, key = { "order-${it.id}" }) { order ->
-                                        Card(modifier = Modifier.fillMaxWidth()) {
-                                            Column(
-                                                modifier = Modifier.padding(12.dp).semantics(mergeDescendants = true) {},
-                                                verticalArrangement = Arrangement.spacedBy(8.dp),
-                                            ) {
-                                                Text(
-                                                    "${stringResource(R.string.order_number)} #${order.id}",
-                                                    style = MaterialTheme.typography.titleMedium,
-                                                )
-                                                if (orderStatusUnavailable) {
-                                                    Text(stringResource(R.string.order_status_unavailable))
-                                                } else {
-                                                    Text(
-                                                        order.statusLabel ?: stringResource(R.string.confirmation),
-                                                        fontWeight = FontWeight.SemiBold,
-                                                    )
-                                                }
-                                                if (order.total != null && order.currency != null) {
-                                                    Text("${order.total} ${order.currency}")
-                                                }
-                                            }
-                                        }
+                                }
+                            }
+                        }
+                        items(customerOrders, key = { "order-${it.id}" }) { order ->
+                            Card(modifier = Modifier.fillMaxWidth()) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp).semantics(mergeDescendants = true) {},
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Text(
+                                        "${stringResource(R.string.order_number)} #${order.id}",
+                                        style = MaterialTheme.typography.titleMedium,
+                                    )
+                                    if (orderStatusUnavailable) {
+                                        Text(stringResource(R.string.order_status_unavailable))
+                                    } else {
+                                        Text(
+                                            order.statusLabel ?: stringResource(R.string.confirmation),
+                                            fontWeight = FontWeight.SemiBold,
+                                        )
                                     }
-                                    if (orderStatusUnavailable && customerOrders.isEmpty()) {
-                                        item { Text(stringResource(R.string.order_status_unavailable)) }
+                                    if (order.total != null && order.currency != null) {
+                                        Text("${order.total} ${order.currency}")
                                     }
                                 }
                             }
+                        }
+                        if (orderStatusUnavailable && customerOrders.isEmpty()) {
+                            item { Text(stringResource(R.string.order_status_unavailable)) }
                         }
                     }
                 }
