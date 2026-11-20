@@ -913,7 +913,15 @@ final class ManagementModel: ObservableObject {
                         }
                     }
                     socket.resume()
-                    try await socket.sendPing()
+                    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                        socket.sendPing { error in
+                            if let error {
+                                continuation.resume(throwing: error)
+                            } else {
+                                continuation.resume(returning: ())
+                            }
+                        }
+                    }
                     retryDelay = 2
                     await refreshOrders(for: restaurant)
                     while !Task.isCancelled {
