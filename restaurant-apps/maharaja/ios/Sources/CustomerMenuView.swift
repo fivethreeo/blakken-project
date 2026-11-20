@@ -494,6 +494,34 @@ private struct CustomerCheckoutView: View {
                 }
             }
             .disabled(!model.canEditOrder)
+            if !model.cartIsEmpty {
+                Section("customer.checkout") {
+                    if model.status?.isOpen != true {
+                        Text("customer.closed")
+                            .foregroundStyle(.secondary)
+                    }
+                    TextField("customer.name", text: $model.customerName)
+                        .textContentType(.name)
+                        .textInputAutocapitalization(.words)
+                    TextField("customer.phone", text: $model.phone)
+                        .textContentType(.telephoneNumber)
+                        .keyboardType(.phonePad)
+                    TextField("customer.note", text: $model.note, axis: .vertical)
+                        .lineLimit(2...5)
+                    Button {
+                        Task { await model.placeOrder() }
+                    } label: {
+                        if model.isSubmitting {
+                            ProgressView()
+                        } else {
+                            Text("customer.placeOrder")
+                        }
+                    }
+                    .disabled(!model.canSubmit)
+                }
+                .disabled(!model.canEditOrder)
+            }
+
             ForEach(model.customerOrders) { order in
                 Section {
                     VStack(alignment: .leading, spacing: 8) {
@@ -530,33 +558,6 @@ private struct CustomerCheckoutView: View {
                 }
             }
 
-            if !model.cartIsEmpty {
-                Section("customer.checkout") {
-                    if model.status?.isOpen != true {
-                        Text("customer.closed")
-                            .foregroundStyle(.secondary)
-                    }
-                    TextField("customer.name", text: $model.customerName)
-                        .textContentType(.name)
-                        .textInputAutocapitalization(.words)
-                    TextField("customer.phone", text: $model.phone)
-                        .textContentType(.telephoneNumber)
-                        .keyboardType(.phonePad)
-                    TextField("customer.note", text: $model.note, axis: .vertical)
-                        .lineLimit(2...5)
-                    Button {
-                        Task { await model.placeOrder() }
-                    } label: {
-                        if model.isSubmitting {
-                            ProgressView()
-                        } else {
-                            Text("customer.placeOrder")
-                        }
-                    }
-                    .disabled(!model.canSubmit)
-                }
-                .disabled(!model.canEditOrder)
-            }
         }
         .navigationTitle(Text("customer.cartAndOrders"))
         .navigationBarBackButtonHidden(model.isSubmitting)

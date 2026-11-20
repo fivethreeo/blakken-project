@@ -45,6 +45,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -402,25 +404,6 @@ private fun CustomerMenuScreen(lifecycle: Lifecycle) {
                                 }
                             }
                         }
-                        items(customerOrders, key = { "order-${it.id}" }) { order ->
-                            Card(modifier = Modifier.fillMaxWidth()) {
-                                Column(Modifier.padding(12.dp)) {
-                                    Text(
-                                        order.statusLabel?.takeUnless { orderStatusUnavailable }
-                                            ?: stringResource(R.string.confirmation),
-                                        style = MaterialTheme.typography.titleMedium,
-                                    )
-                                    Text("${stringResource(R.string.order_number)} #${order.id}")
-                                    if (order.total != null && order.currency != null) {
-                                        Text("${order.total} ${order.currency}")
-                                    }
-                                }
-                            }
-                        }
-                        if (orderStatusUnavailable) {
-                            item { Text(stringResource(R.string.order_status_unavailable)) }
-                        }
-
                         if (cartItems.isNotEmpty()) {
                             item {
                                 Card(modifier = Modifier.fillMaxWidth()) {
@@ -473,6 +456,33 @@ private fun CustomerMenuScreen(lifecycle: Lifecycle) {
                                     }
                                 }
                             }
+                        }
+                        items(customerOrders, key = { "order-${it.id}" }) { order ->
+                            Card(modifier = Modifier.fillMaxWidth()) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp).semantics(mergeDescendants = true) {},
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Text(
+                                        "${stringResource(R.string.order_number)} #${order.id}",
+                                        style = MaterialTheme.typography.titleMedium,
+                                    )
+                                    if (orderStatusUnavailable) {
+                                        Text(stringResource(R.string.order_status_unavailable))
+                                    } else {
+                                        Text(
+                                            order.statusLabel ?: stringResource(R.string.confirmation),
+                                            fontWeight = FontWeight.SemiBold,
+                                        )
+                                    }
+                                    if (order.total != null && order.currency != null) {
+                                        Text("${order.total} ${order.currency}")
+                                    }
+                                }
+                            }
+                        }
+                        if (orderStatusUnavailable && customerOrders.isEmpty()) {
+                            item { Text(stringResource(R.string.order_status_unavailable)) }
                         }
                     }
                 }
