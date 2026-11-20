@@ -11,6 +11,10 @@
 "customer.addOne" = "Legg til én";
 "customer.removeOne" = "Fjern én";
 "customer.quantity" = "Antall";
+"customer.cart" = "Handlekurv";
+"customer.emptyCart" = "Handlekurven er tom.";
+"customer.addToCart %@" = "Legg %@ i handlekurven";
+"customer.removeFromCart %@" = "Fjern %@";
 "customer.confirmation" = "Bestillingen er bekreftet";
 "customer.orderNumber" = "Bestilling";
 "customer.checkout" = "Bestill";

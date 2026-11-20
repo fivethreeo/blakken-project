@@ -31,7 +31,7 @@ struct ManagementCategory: Decodable, Identifiable {
 
 struct ManagementDish: Decodable, Identifiable {
     let id: Int
-    let pageID: Int
+    let pageId: Int
     let name: String
     let description: String
     let price: String?
@@ -90,6 +90,11 @@ private struct MenuRequest: Encodable {
 
 private struct CategoryRequest: Encodable {
     let name: String
+}
+
+private struct CategoryUpdateRequest: Encodable {
+    let name: String
+    let isVisible: Bool
 }
 
 private struct DishRequest: Encodable {
@@ -189,12 +194,13 @@ struct ManagementAPI {
         menuID: Int,
         categoryID: Int,
         name: String,
+        isVisible: Bool,
         token: String
     ) async throws {
         let _: EmptyResponse = try await request(
             "api/v1/management/restaurants/\(appid)/menus/\(menuID)/categories/\(categoryID)/",
             method: "PATCH",
-            body: CategoryRequest(name: name),
+            body: CategoryUpdateRequest(name: name, isVisible: isVisible),
             token: token
         )
     }
@@ -454,7 +460,7 @@ final class ManagementModel: ObservableObject {
         }
     }
 
-    func updateCategory(menuID: Int, categoryID: Int, name: String) async {
+    func updateCategory(menuID: Int, categoryID: Int, name: String, isVisible: Bool) async {
         guard let restaurant = selectedRestaurant else { return }
         await performAuthenticated { token in
             try await api.updateCategory(
@@ -462,6 +468,7 @@ final class ManagementModel: ObservableObject {
                 menuID: menuID,
                 categoryID: categoryID,
                 name: name,
+                isVisible: isVisible,
                 token: token
             )
             menuContent = try await api.menuContent(

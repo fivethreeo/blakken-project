@@ -11,6 +11,10 @@
 "customer.addOne" = "Add one";
 "customer.removeOne" = "Remove one";
 "customer.quantity" = "Quantity";
+"customer.cart" = "Cart";
+"customer.emptyCart" = "Your cart is empty.";
+"customer.addToCart %@" = "Add %@ to cart";
+"customer.removeFromCart %@" = "Remove %@";
 "customer.confirmation" = "Order confirmed";
 "customer.orderNumber" = "Order";
 "customer.checkout" = "Checkout";

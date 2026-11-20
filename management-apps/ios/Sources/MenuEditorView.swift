@@ -36,7 +36,13 @@ struct MenuEditorView: View {
                             CategoryEditorView(model: model, menu: menu, categoryID: category.id)
                         } label: {
                             HStack {
-                                Text(category.name)
+                                VStack(alignment: .leading) {
+                                    Text(category.name)
+                                    if !category.isVisible {
+                                        Text("management.categoryHidden")
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
                                 Spacer()
                                 Text(category.dishes.count.formatted())
                                     .foregroundStyle(.secondary)
@@ -58,6 +64,7 @@ private struct CategoryEditorView: View {
     let categoryID: Int
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
+    @State private var isVisible = true
     @State private var didLoadName = false
     @State private var isConfirmingDelete = false
 
@@ -70,12 +77,14 @@ private struct CategoryEditorView: View {
             Section("management.category") {
                 TextField("management.categoryName", text: $name)
                     .textInputAutocapitalization(.words)
+                Toggle("management.categoryVisible", isOn: $isVisible)
                 Button("management.saveCategory") {
                     Task {
                         await model.updateCategory(
                             menuID: menu.id,
                             categoryID: categoryID,
-                            name: name.trimmingCharacters(in: .whitespacesAndNewlines)
+                            name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+                            isVisible: isVisible
                         )
                         if model.errorMessage == nil {
                             dismiss()
@@ -120,6 +129,7 @@ private struct CategoryEditorView: View {
         .task {
             guard !didLoadName, let category else { return }
             name = category.name
+            isVisible = category.isVisible
             didLoadName = true
         }
         .confirmationDialog(

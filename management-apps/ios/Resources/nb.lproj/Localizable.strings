@@ -30,6 +30,8 @@
 "management.addCategory" = "Legg til kategori";
 "management.category" = "Kategori";
 "management.categoryName" = "Kategorinavn";
+"management.categoryVisible" = "Synlig for kunder";
+"management.categoryHidden" = "Skjult for kunder";
 "management.saveCategory" = "Lagre kategori";
 "management.deleteCategory" = "Slett kategori";
 "management.deleteCategoryConfirmation" = "Vil du slette denne kategorien og alle rettene?";

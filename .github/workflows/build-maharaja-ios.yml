@@ -46,6 +46,30 @@ jobs:
           "INFOPLIST_KEY_RESTAURANT_APP_ID=$RESTAURANT_APP_ID"
           build
 
+      - name: Configure API base URL and restaurant app ID
+        working-directory: restaurant-apps/maharaja/ios
+        env:
+          API_BASE_URL: ${{ inputs.api_base_url }}
+          RESTAURANT_APP_ID: ${{ inputs.restaurant_app_id }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import plistlib
+          from pathlib import Path
+
+          info_path = Path("build/Build/Products/Release-iphoneos/Maharaja.app/Info.plist")
+          with info_path.open("rb") as info_file:
+              info = plistlib.load(info_file)
+          info["API_BASE_URL"] = os.environ["API_BASE_URL"]
+          info["RESTAURANT_APP_ID"] = os.environ["RESTAURANT_APP_ID"]
+          with info_path.open("wb") as info_file:
+              plistlib.dump(info, info_file)
+          with info_path.open("rb") as info_file:
+              configured = plistlib.load(info_file)
+          assert configured["API_BASE_URL"] == os.environ["API_BASE_URL"]
+          assert configured["RESTAURANT_APP_ID"] == os.environ["RESTAURANT_APP_ID"]
+          PY
+
       - name: Package unsigned IPA for SideStore
         working-directory: restaurant-apps/maharaja/ios
         run: |

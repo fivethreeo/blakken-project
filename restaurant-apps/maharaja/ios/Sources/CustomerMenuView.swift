@@ -18,6 +18,10 @@ final class CustomerMenuModel: ObservableObject {
     private var pendingSignature: String?
 
     var cartIsEmpty: Bool { quantities.values.allSatisfy { $0 == 0 } }
+    var cartCount: Int { quantities.values.reduce(0, +) }
+    var cartDishes: [MenuDish] {
+        (menu?.categories ?? []).flatMap(\.dishes).filter { (quantities[$0.id] ?? 0) > 0 }
+    }
     var canSubmit: Bool {
         status?.isOpen == true && !cartIsEmpty && !customerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !phone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isSubmitting
@@ -120,17 +124,29 @@ struct CustomerMenuView: View {
                     }
                     .disabled(model.isLoading || model.isSubmitting)
                 }
+                ToolbarItem(placement: .bottomBar) {
+                    NavigationLink {
+                        CustomerCheckoutView(model: model)
+                    } label: {
+                        HStack {
+                            Image(systemName: "cart")
+                            Text("customer.checkout")
+                            Text("(\(model.cartCount))")
+                        }
+                    }
+                    .disabled(model.menu == nil)
+                }
             }
             .task { await model.load() }
             .refreshable { await model.load() }
-            .alert("customer.error", isPresented: Binding(
-                get: { model.errorMessage != nil },
-                set: { if !$0 { model.errorMessage = nil } }
-            )) {
-                Button("customer.ok") { model.errorMessage = nil }
-            } message: {
-                Text(model.errorMessage ?? "")
-            }
+        }
+        .alert("customer.error", isPresented: Binding(
+            get: { model.errorMessage != nil },
+            set: { if !$0 { model.errorMessage = nil } }
+        )) {
+            Button("customer.ok") { model.errorMessage = nil }
+        } message: {
+            Text(model.errorMessage ?? "")
         }
     }
 
@@ -161,28 +177,64 @@ struct CustomerMenuView: View {
                                     Text("\(price) \(String(localized: "customer.currency"))")
                                         .monospacedDigit()
                                 }
+                                Button {
+                                    model.setQuantity((model.quantities[dish.id] ?? 0) + 1, for: dish.id)
+                                } label: {
+                                    Image(systemName: "cart.badge.plus")
+                                        .frame(minWidth: 44, minHeight: 44)
+                                }
+                                .buttonStyle(.borderless)
+                                .accessibilityLabel(Text("customer.addToCart \(dish.name)"))
+                                .disabled(dish.price == nil || (model.quantities[dish.id] ?? 0) >= 99 || model.isSubmitting)
                             }
                             if !dish.description.isEmpty {
                                 Text(dish.description).foregroundStyle(.secondary)
-                            }
-                            HStack {
-                                Button("customer.removeOne") {
-                                    model.setQuantity((model.quantities[dish.id] ?? 0) - 1, for: dish.id)
-                                }
-                                .disabled((model.quantities[dish.id] ?? 0) == 0 || model.isSubmitting)
-                                Text("\(model.quantities[dish.id] ?? 0)")
-                                    .accessibilityLabel("customer.quantity")
-                                Button("customer.addOne") {
-                                    model.setQuantity((model.quantities[dish.id] ?? 0) + 1, for: dish.id)
-                                }
-                                .disabled((model.quantities[dish.id] ?? 0) >= 99 || model.isSubmitting)
                             }
                         }
                         .padding(.vertical, 4)
                     }
                 }
             }
+        }
+        .listStyle(.insetGrouped)
+    }
+}
 
+private struct CustomerCheckoutView: View {
+    @ObservedObject var model: CustomerMenuModel
+
+    var body: some View {
+        Form {
+            Section("customer.cart") {
+                if model.cartIsEmpty {
+                    Text("customer.emptyCart")
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(model.cartDishes) { dish in
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(dish.name).font(.headline)
+                        if let price = dish.price {
+                            Text("\(price) \(String(localized: "customer.currency"))")
+                                .monospacedDigit()
+                        }
+                        Stepper(value: Binding(
+                            get: { model.quantities[dish.id] ?? 1 },
+                            set: { model.setQuantity($0, for: dish.id) }
+                        ), in: 1...99) {
+                            HStack {
+                                Text("customer.quantity")
+                                Text("\(model.quantities[dish.id] ?? 0)")
+                            }
+                        }
+                        Button(role: .destructive) {
+                            model.setQuantity(0, for: dish.id)
+                        } label: {
+                            Text("customer.removeFromCart \(dish.name)")
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                }
+            }
             if let receipt = model.orderReceipt {
                 Section("customer.confirmation") {
                     HStack {
@@ -193,31 +245,35 @@ struct CustomerMenuView: View {
                 }
             }
 
-            Section("customer.checkout") {
-                if model.status?.isOpen != true {
-                    Text("customer.closed")
-                        .foregroundStyle(.secondary)
-                }
-                TextField("customer.name", text: $model.customerName)
-                    .textContentType(.name)
-                    .textInputAutocapitalization(.words)
-                TextField("customer.phone", text: $model.phone)
-                    .textContentType(.telephoneNumber)
-                    .keyboardType(.phonePad)
-                TextField("customer.note", text: $model.note, axis: .vertical)
-                    .lineLimit(2...5)
-                Button {
-                    Task { await model.placeOrder() }
-                } label: {
-                    if model.isSubmitting {
-                        ProgressView()
-                    } else {
-                        Text("customer.placeOrder")
+            if !model.cartIsEmpty {
+                Section("customer.checkout") {
+                    if model.status?.isOpen != true {
+                        Text("customer.closed")
+                            .foregroundStyle(.secondary)
                     }
+                    TextField("customer.name", text: $model.customerName)
+                        .textContentType(.name)
+                        .textInputAutocapitalization(.words)
+                    TextField("customer.phone", text: $model.phone)
+                        .textContentType(.telephoneNumber)
+                        .keyboardType(.phonePad)
+                    TextField("customer.note", text: $model.note, axis: .vertical)
+                        .lineLimit(2...5)
+                    Button {
+                        Task { await model.placeOrder() }
+                    } label: {
+                        if model.isSubmitting {
+                            ProgressView()
+                        } else {
+                            Text("customer.placeOrder")
+                        }
+                    }
+                    .disabled(!model.canSubmit)
                 }
-                .disabled(!model.canSubmit)
             }
         }
-        .listStyle(.insetGrouped)
+        .navigationTitle(Text("customer.checkout"))
+        .navigationBarBackButtonHidden(model.isSubmitting)
+        .disabled(model.isSubmitting)
     }
 }
