@@ -115,6 +115,16 @@ struct CustomerAPI {
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue(Locale.preferredLanguages.first ?? "en", forHTTPHeaderField: "Accept-Language")
+        if method == "POST", let scheme = baseURL.scheme, let host = baseURL.host {
+            let portSuffix: String
+            if let port = baseURL.port,
+               !((scheme == "https" && port == 443) || (scheme == "http" && port == 80)) {
+                portSuffix = ":\(port)"
+            } else {
+                portSuffix = ""
+            }
+            request.setValue("\(scheme)://\(host)\(portSuffix)", forHTTPHeaderField: "Origin")
+        }
         return request
     }
 
