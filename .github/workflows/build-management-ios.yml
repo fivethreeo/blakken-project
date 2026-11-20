@@ -7,6 +7,10 @@ on:
         description: HTTPS API base URL reachable from the iPhone
         required: true
         type: string
+      websocket_base_url:
+        description: WebSocket base URL reachable from the iPhone
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -37,10 +41,11 @@ jobs:
           CODE_SIGNING_ALLOWED=NO
           build
 
-      - name: Configure API base URL
+      - name: Configure API and WebSocket base URLs
         working-directory: management-apps/ios
         env:
           API_BASE_URL: ${{ inputs.api_base_url }}
+          WEBSOCKET_BASE_URL: ${{ inputs.websocket_base_url }}
         run: |
           python3 - <<'PY'
           import os
@@ -52,10 +57,13 @@ jobs:
           with info_path.open("rb") as info_file:
               info = plistlib.load(info_file)
           info["API_BASE_URL"] = os.environ["API_BASE_URL"]
+          info["TS_WS_BACKEND_URL"] = os.environ["WEBSOCKET_BASE_URL"]
           with info_path.open("wb") as info_file:
               plistlib.dump(info, info_file)
           with info_path.open("rb") as info_file:
-              assert plistlib.load(info_file)["API_BASE_URL"] == os.environ["API_BASE_URL"]
+              configured = plistlib.load(info_file)
+          assert configured["API_BASE_URL"] == os.environ["API_BASE_URL"]
+          assert configured["TS_WS_BACKEND_URL"] == os.environ["WEBSOCKET_BASE_URL"]
           PY
 
       - name: Package unsigned IPA for SideStore

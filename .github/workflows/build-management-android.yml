@@ -7,6 +7,10 @@ on:
         description: HTTPS API base URL reachable from the Android device
         required: true
         type: string
+      websocket_base_url:
+        description: WebSocket base URL reachable from the Android device
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -35,7 +39,11 @@ jobs:
         working-directory: management-apps/android
         env:
           API_BASE_URL: ${{ inputs.api_base_url }}
-        run: gradle --no-daemon assembleDebug -PBLAAKEN_API_BASE_URL="$API_BASE_URL"
+          WEBSOCKET_BASE_URL: ${{ inputs.websocket_base_url }}
+        run: >-
+          gradle --no-daemon assembleDebug
+          -PBLAAKEN_API_BASE_URL="$API_BASE_URL"
+          -PBLAAKEN_WS_BASE_URL="$WEBSOCKET_BASE_URL"
 
       - uses: actions/upload-artifact@v4
         with:

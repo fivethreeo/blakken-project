@@ -31,7 +31,10 @@ from .views import (
     auth, delete_page, dish_detail, dish_list, index, job_results, menu_pages, move_dish,
     move_page, page_visibility, restaurant_signup,
 )
-from .orders import OrderAuthenticationForm, create_order, customer_order_auth, customer_orders, order_list, orders_page, order_status, shop_status
+from .orders import (
+    OrderAuthenticationForm, create_order, customer_order_auth, customer_orders,
+    management_order_auth, order_list, orders_page, order_status, shop_status,
+)
 
 urlpatterns = [
     path('_nested_admin/', include('nested_admin.urls')),
@@ -62,6 +65,7 @@ urlpatterns = [
     path('api/v1/restaurants/<uuid:appid>/menus/<int:menu_id>/orders/', create_order, name='restaurant-create-order'),
     path('internal/auth/', auth, name='auth'),
     path('internal/order-auth/', customer_order_auth, name='customer-order-auth'),
+    path('internal/management-order-auth/', management_order_auth, name='management-order-auth'),
     path('jobs/results/', job_results, name='job-results'),
     path('shop/status/', shop_status, name='shop-status'),
     path('orders/', orders_page, name='orders'),

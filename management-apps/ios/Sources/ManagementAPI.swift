@@ -132,6 +132,22 @@ struct ManagementAPI {
         baseURL = URL(string: configured ?? "http://localhost:8000/")!
     }
 
+    func orderUpdatesRequest(token: String) throws -> URLRequest {
+        let configured = Bundle.main.object(forInfoDictionaryKey: "TS_WS_BACKEND_URL") as? String
+            ?? "ws://localhost:8002/"
+        guard let websocketBaseURL = URL(string: configured),
+              let url = URL(string: "management/", relativeTo: websocketBaseURL)?.absoluteURL,
+              let scheme = baseURL.scheme,
+              let host = baseURL.host else {
+            throw URLError(.badURL)
+        }
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let port = baseURL.port.map { ":\($0)" } ?? ""
+        request.setValue("\(scheme)://\(host)\(port)", forHTTPHeaderField: "Origin")
+        return request
+    }
+
     func signIn(email: String, password: String) async throws -> AccessTokens {
         try await request(
             "api/v1/auth/token/",
@@ -395,6 +411,8 @@ final class ManagementModel: ObservableObject {
 
     private var refreshToken: String?
     private let api = ManagementAPI()
+    private var orderUpdatesSocket: URLSessionWebSocketTask?
+    private var orderUpdatesTask: Task<Void, Never>?
 
     func signIn(email: String, password: String) async {
         await perform {
@@ -414,6 +432,7 @@ final class ManagementModel: ObservableObject {
         await performAuthenticated { token in
             try await loadRestaurant(restaurant, token: token)
         }
+        startOrderUpdates()
     }
 
     func refresh() async {
@@ -601,6 +620,7 @@ final class ManagementModel: ObservableObject {
     }
 
     func signOut() {
+        stopOrderUpdates()
         accessToken = nil
         refreshToken = nil
         restaurants = []
@@ -613,6 +633,7 @@ final class ManagementModel: ObservableObject {
     }
 
     func showRestaurants() {
+        stopOrderUpdates()
         selectedRestaurant = nil
         menus = []
         menuContent = nil
@@ -627,6 +648,56 @@ final class ManagementModel: ObservableObject {
         menus = try await loadedMenus
         orders = try await loadedOrders
         shopStatus = try await loadedShopStatus
+    }
+
+    private func startOrderUpdates() {
+        stopOrderUpdates()
+        guard let restaurant = selectedRestaurant, accessToken != nil else { return }
+        orderUpdatesTask = Task { [weak self] in
+            guard let self else { return }
+            var retryDelay: UInt64 = 2
+            while !Task.isCancelled {
+                guard selectedRestaurant?.appid == restaurant.appid,
+                      let accessToken else { return }
+                do {
+                    let request = try api.orderUpdatesRequest(token: accessToken)
+                    let socket = URLSession.shared.webSocketTask(with: request)
+                    orderUpdatesSocket = socket
+                    socket.resume()
+                    while !Task.isCancelled {
+                        let message = try await socket.receive()
+                        guard case let .string(text) = message,
+                              let data = text.data(using: .utf8),
+                              let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                              payload["event"] as? String == "orders.changed" else {
+                            continue
+                        }
+                        await refreshOrders(for: restaurant)
+                    }
+                } catch {
+                    orderUpdatesSocket?.cancel(with: .goingAway, reason: nil)
+                    orderUpdatesSocket = nil
+                }
+                guard !Task.isCancelled, selectedRestaurant?.appid == restaurant.appid else { return }
+                try? await Task.sleep(for: .seconds(retryDelay))
+                retryDelay = min(retryDelay * 2, 30)
+                await refreshOrders(for: restaurant)
+            }
+        }
+    }
+
+    private func stopOrderUpdates() {
+        orderUpdatesTask?.cancel()
+        orderUpdatesTask = nil
+        orderUpdatesSocket?.cancel(with: .goingAway, reason: nil)
+        orderUpdatesSocket = nil
+    }
+
+    private func refreshOrders(for restaurant: ManagementRestaurant) async {
+        guard selectedRestaurant?.appid == restaurant.appid else { return }
+        await performAuthenticated { token in
+            orders = try await api.orders(for: restaurant.appid, token: token)
+        }
     }
 
     private func performAuthenticated(

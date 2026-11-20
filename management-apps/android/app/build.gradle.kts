@@ -20,6 +20,9 @@ android {
     val apiBaseUrl = providers.gradleProperty("BLAAKEN_API_BASE_URL")
         .orElse("https://blakken.cavabonga.no/")
         .get()
+    val websocketBaseUrl = providers.gradleProperty("BLAAKEN_WS_BASE_URL")
+        .orElse("ws://10.0.2.2:8002/")
+        .get()
 
     defaultConfig {
         applicationId = "no.blakken.management"
@@ -28,6 +31,7 @@ android {
         versionCode = 1
         versionName = "1.0"
         buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
+        buildConfigField("String", "WS_BASE_URL", "\"$websocketBaseUrl\"")
     }
 
     buildFeatures {
@@ -44,5 +48,6 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

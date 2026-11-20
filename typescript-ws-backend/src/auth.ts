@@ -4,7 +4,7 @@ export interface AuthOptions {
   djangoUrl?: string;
   serviceToken?: string;
   sessionCookieName?: string;
-  authPath?: 'internal/auth/' | 'internal/order-auth/';
+  authPath?: 'internal/auth/' | 'internal/order-auth/' | 'internal/management-order-auth/';
 }
 
 export type AuthResult = string | number | null;
@@ -25,15 +25,24 @@ export async function authenticate(
     ?.split(';')
     .map((value) => value.trim())
     .find((value) => value.startsWith(prefix) && value.length > prefix.length);
-  if (!cookie) return null;
+  const managementAuthorization = authPath === 'internal/management-order-auth/'
+    ? request.headers.authorization
+    : undefined;
+  if (!cookie && !managementAuthorization) return null;
 
   try {
     const base = djangoUrl.endsWith('/') ? djangoUrl : `${djangoUrl}/`;
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${serviceToken}`,
+    };
+    if (cookie) {
+      headers.Cookie = cookie;
+    }
+    if (managementAuthorization) {
+      headers['X-Management-Authorization'] = managementAuthorization;
+    }
     const response = await fetch(new URL(authPath, base), {
-      headers: {
-        Cookie: cookie,
-        Authorization: `Bearer ${serviceToken}`,
-      },
+      headers,
       redirect: 'error',
       signal: AbortSignal.timeout(3000),
     });

@@ -2,12 +2,21 @@ package no.blakken.management
 
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
 import org.json.JSONObject
 import java.io.IOException
 import java.net.HttpURLConnection
+import java.net.URI
 import java.net.URL
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.coroutines.resume
 
 data class Restaurant(val name: String, val appid: String, val active: Boolean, val role: String)
 data class MenuItem(val id: Int, val name: String, val isDefault: Boolean)
@@ -45,6 +54,8 @@ data class ShopStatus(val isOpen: Boolean)
 data class Tokens(val access: String, val refresh: String)
 
 class ManagementApi(private val context: Context) {
+    private val websocketClient = OkHttpClient()
+
     suspend fun signIn(email: String, password: String): Tokens =
         request(
             "api/v1/auth/token/",
@@ -242,6 +253,45 @@ class ManagementApi(private val context: Context) {
                 .put("expected_status", order.status),
             token = token,
         )
+    }
+
+    suspend fun waitForOrderUpdate(token: String): Boolean = suspendCancellableCoroutine { continuation ->
+        val apiUri = URI(BuildConfig.API_BASE_URL)
+        val originPort = if (apiUri.port == -1) "" else ":${apiUri.port}"
+        val origin = "${apiUri.scheme}://${apiUri.host}$originPort"
+        val request = Request.Builder()
+            .url("${BuildConfig.WS_BASE_URL.trimEnd('/')}/management/")
+            .header("Authorization", "Bearer $token")
+            .header("Origin", origin)
+            .build()
+        val completed = AtomicBoolean(false)
+        fun finish(receivedUpdate: Boolean) {
+            if (completed.compareAndSet(false, true) && continuation.isActive) {
+                continuation.resume(receivedUpdate)
+            }
+        }
+        val socket = websocketClient.newWebSocket(request, object : WebSocketListener() {
+            override fun onMessage(webSocket: WebSocket, text: String) {
+                val event = runCatching { JSONObject(text).optString("event") }.getOrNull()
+                if (event == "orders.changed") {
+                    webSocket.close(1000, "Order update received")
+                    finish(true)
+                }
+            }
+
+            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                webSocket.close(code, reason)
+            }
+
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                finish(false)
+            }
+
+            override fun onFailure(webSocket: WebSocket, throwable: Throwable, response: Response?) {
+                finish(false)
+            }
+        })
+        continuation.invokeOnCancellation { socket.cancel() }
     }
 
     suspend fun shopStatus(appid: String, token: String): ShopStatus =

@@ -24,6 +24,7 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 
 from .models import Dish, Menu, Order, OrderItem, Restaurant, RestaurantMembership, ShopStatus, visible_menu_pages
 from .tasks import notify
+from .tokens import user_from_access_token
 
 
 logger = logging.getLogger(__name__)
@@ -176,6 +177,23 @@ def customer_order_auth(request):
     if not channel:
         return JsonResponse({'error': _('Authentication required.')}, status=401)
     return JsonResponse({'user_id': f'orders:{channel}'})
+
+
+@never_cache
+@require_GET
+def management_order_auth(request):
+    if not settings.INTERNAL_AUTH_TOKEN:
+        return JsonResponse({'error': _('Unavailable.')}, status=503)
+    if not constant_time_compare(
+        request.headers.get('Authorization', ''), f'Bearer {settings.INTERNAL_AUTH_TOKEN}',
+    ):
+        return JsonResponse({'error': _('Forbidden.')}, status=403)
+    authorization = request.headers.get('X-Management-Authorization', '')
+    scheme, _separator, token = authorization.partition(' ')
+    user = user_from_access_token(token) if scheme.lower() == 'bearer' and token else None
+    if user is None:
+        return JsonResponse({'error': _('Authentication required.')}, status=401)
+    return JsonResponse({'user_id': user.pk})
 
 
 def _read_json(request):

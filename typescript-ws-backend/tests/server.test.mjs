@@ -255,6 +255,37 @@ test('customer order sockets use private session channels and never receive anot
   }
 });
 
+test('management order sockets authenticate the app bearer token through Django', async (t) => {
+  const calls = [];
+  const django = await listen(t, createServer((request, response) => {
+    calls.push({
+      path: request.url,
+      authorization: request.headers.authorization,
+      managementAuthorization: request.headers['x-management-authorization'],
+    });
+    response.end(JSON.stringify({ user_id: 42 }));
+  }));
+  const { address, sockets } = await backend(t, {
+    djangoUrl: `http://${django}/django/`,
+    serviceToken: 'test-only-service-token',
+    allowedOrigins: ['https://management.example'],
+  });
+  const accepted = once(sockets, 'connection');
+  const client = new WebSocket(`ws://${address}/management/`, {
+    origin: 'https://management.example',
+    headers: { Authorization: 'Bearer app-access-token' },
+  });
+  await once(client, 'open');
+  assert.equal((await accepted)[0].userId, 42);
+  assert.deepEqual(calls, [{
+    path: '/django/internal/management-order-auth/',
+    authorization: 'Bearer test-only-service-token',
+    managementAuthorization: 'Bearer app-access-token',
+  }]);
+  client.close();
+  await once(client, 'close');
+});
+
 test('public shop channel skips session auth and never receives private order notifications', async (t) => {
   let authCalls = 0;
   const django = await listen(t, createServer((request, response) => {

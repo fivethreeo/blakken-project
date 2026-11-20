@@ -17,3 +17,4 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: ""
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_API_BASE_URL: "http://localhost:8000/"
+        INFOPLIST_KEY_TS_WS_BACKEND_URL: "ws://localhost:8002/"

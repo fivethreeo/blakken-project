@@ -39,6 +39,7 @@ from .models import (
 )
 from .tasks import notify
 from .templatetags.menu_tags import get_menu_pages
+from .tokens import issue_token_pair
 
 
 @shared_task
@@ -2478,6 +2479,27 @@ class OrderingTests(TestCase):
         self.assertEqual(self.client.get(url, **headers).status_code, 401)
         with override_settings(INTERNAL_AUTH_TOKEN=''):
             self.assertEqual(self.client.get(url, **headers).status_code, 503)
+
+    @override_settings(INTERNAL_AUTH_TOKEN='test-only-auth')
+    def test_management_socket_auth_requires_service_token_and_a_valid_access_token(self):
+        user = get_user_model().objects.create_user(username='management-socket-user')
+        access_token = issue_token_pair(user)['access']
+        url = reverse('management-order-auth')
+        internal = {'HTTP_AUTHORIZATION': 'Bearer test-only-auth'}
+        self.assertEqual(self.client.get(url).status_code, 403)
+        self.assertEqual(self.client.get(url, **internal).status_code, 401)
+        self.assertEqual(
+            self.client.get(
+                url, **internal, HTTP_X_MANAGEMENT_AUTHORIZATION='Bearer invalid',
+            ).status_code,
+            401,
+        )
+        response = self.client.get(
+            url, **internal, HTTP_X_MANAGEMENT_AUTHORIZATION=f'Bearer {access_token}',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {'user_id': user.pk})
+        self.assertIn('no-store', response['Cache-Control'])
 
     @override_settings(WS_INTERNAL_URL='http://127.0.0.1:8002/', WS_INTERNAL_NOTIFY_TOKEN='test-only')
     def test_notification_failure_does_not_lose_or_duplicate_order(self):

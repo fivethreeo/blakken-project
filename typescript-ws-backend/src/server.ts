@@ -121,7 +121,7 @@ export function createBackend(appName = 'blakken', options: BackendOptions = {})
     };
     const url = new URL(request.url ?? '/', 'http://localhost');
     const path = url.pathname;
-    if (path !== '/' && path !== '/orders/' && path !== '/shop/') {
+    if (path !== '/' && path !== '/orders/' && path !== '/management/' && path !== '/shop/') {
       reject(404);
       return;
     }
@@ -134,11 +134,20 @@ export function createBackend(appName = 'blakken', options: BackendOptions = {})
       reject(400);
       return;
     }
-    const userId = path === '/shop/' ? `public:shop:${appid}` : await authenticate(request, {
-      ...auth, authPath: path === '/orders/' ? 'internal/order-auth/' : 'internal/auth/',
-    });
+    const authPath = path === '/orders/'
+      ? 'internal/order-auth/'
+      : path === '/management/'
+        ? 'internal/management-order-auth/'
+        : 'internal/auth/';
+    const userId = path === '/shop/'
+      ? `public:shop:${appid}`
+      : await authenticate(request, { ...auth, authPath });
     if (socket.destroyed || !socket.writable) return;
     if (path === '/orders/' && (typeof userId !== 'string' || !userId.startsWith('orders:'))) {
+      reject(401);
+      return;
+    }
+    if (path === '/management/' && typeof userId !== 'number') {
       reject(401);
       return;
     }
