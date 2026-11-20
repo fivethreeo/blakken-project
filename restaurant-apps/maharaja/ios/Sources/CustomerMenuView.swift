@@ -496,24 +496,32 @@ private struct CustomerCheckoutView: View {
             .disabled(!model.canEditOrder)
             ForEach(model.customerOrders) { order in
                 Section {
-                    HStack {
-                        Text("customer.orderNumber")
-                        Text("#\(order.id)")
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 4) {
+                            Text("customer.orderNumber")
+                            Text("#\(order.id)")
+                        }
+                        .font(.headline)
+                        if model.orderStatusUnavailable {
+                            Text("customer.orderStatusUnavailable")
+                                .foregroundStyle(.secondary)
+                        } else if let statusLabel = order.statusLabel {
+                            Text(statusLabel)
+                                .fontWeight(.semibold)
+                        } else {
+                            ProgressView("customer.orderStatus")
+                        }
+                        if let total = order.total, let currency = order.currency {
+                            Text("\(total) \(currency)")
+                        }
                     }
-                    if let total = order.total, let currency = order.currency {
-                        Text("\(total) \(currency)")
-                    }
-                } header: {
-                    if let statusLabel = order.statusLabel, !model.orderStatusUnavailable {
-                        Text(statusLabel)
-                    } else {
-                        Text("customer.confirmation")
-                    }
+                    .padding(.vertical, 4)
+                    .accessibilityElement(children: .combine)
                 }
             }
             if !model.customerOrders.isEmpty || model.orderStatusUnavailable {
-                Section("customer.orderStatus") {
-                    if model.orderStatusUnavailable {
+                Section("customer.liveUpdates") {
+                    if model.orderStatusUnavailable && model.customerOrders.isEmpty {
                         Text("customer.orderStatusUnavailable")
                     }
                     Text(model.liveUpdatesConnected ? "customer.liveConnected" : "customer.liveReconnecting")
