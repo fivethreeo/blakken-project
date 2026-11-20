@@ -627,6 +627,11 @@ final class ManagementModel: ObservableObject {
     private let api = ManagementAPI()
     private var orderUpdatesSocket: URLSessionWebSocketTask?
     private var orderUpdatesTask: Task<Void, Never>?
+    private var orderPollingTask: Task<Void, Never>?
+    private var orderUpdatesActive = true
+    private var isRefreshingOrders = false
+    private var refreshOrdersAgain = false
+    private var ordersRequest = 0
 
     func signIn(email: String, password: String) async {
         await perform {
@@ -829,7 +834,7 @@ final class ManagementModel: ObservableObject {
         guard let restaurant = selectedRestaurant else { return }
         await performAuthenticated { token in
             try await api.updateOrder(order, to: status, for: restaurant.appid, token: token)
-            orders = try await api.orders(for: restaurant.appid, token: token)
+            try await loadOrders(for: restaurant, token: token)
         }
     }
 
@@ -855,29 +860,70 @@ final class ManagementModel: ObservableObject {
         shopStatus = nil
     }
 
+    func resumeOrderUpdates() {
+        orderUpdatesActive = true
+        startOrderUpdates()
+    }
+
+    func pauseOrderUpdates() {
+        orderUpdatesActive = false
+        stopOrderUpdates()
+    }
+
     private func loadRestaurant(_ restaurant: ManagementRestaurant, token: String) async throws {
         async let loadedMenus = api.menus(for: restaurant.appid, token: token)
-        async let loadedOrders = api.orders(for: restaurant.appid, token: token)
+        async let loadedOrders: Void = loadOrders(for: restaurant, token: token)
         async let loadedShopStatus = api.shopStatus(for: restaurant.appid, token: token)
-        menus = try await loadedMenus
-        orders = try await loadedOrders
-        shopStatus = try await loadedShopStatus
+        let newMenus = try await loadedMenus
+        try await loadedOrders
+        let newShopStatus = try await loadedShopStatus
+        guard !Task.isCancelled, selectedRestaurant?.appid == restaurant.appid else { return }
+        menus = newMenus
+        shopStatus = newShopStatus
+    }
+
+    private func loadOrders(for restaurant: ManagementRestaurant, token: String) async throws {
+        ordersRequest += 1
+        let request = ordersRequest
+        let loadedOrders = try await api.orders(for: restaurant.appid, token: token)
+        guard !Task.isCancelled, request == ordersRequest,
+              selectedRestaurant?.appid == restaurant.appid else { return }
+        orders = loadedOrders
     }
 
     private func startOrderUpdates() {
         stopOrderUpdates()
-        guard let restaurant = selectedRestaurant, accessToken != nil else { return }
+        guard orderUpdatesActive, let restaurant = selectedRestaurant, accessToken != nil else { return }
         orderUpdatesTask = Task { [weak self] in
             guard let self else { return }
             var retryDelay: UInt64 = 2
             while !Task.isCancelled {
-                guard selectedRestaurant?.appid == restaurant.appid,
+                guard selectedRestaurant?.appid == restaurant.appid else { return }
+                await refreshOrders(for: restaurant)
+                guard !Task.isCancelled, selectedRestaurant?.appid == restaurant.appid,
                       let accessToken else { return }
                 do {
                     let request = try api.orderUpdatesRequest(token: accessToken)
                     let socket = URLSession.shared.webSocketTask(with: request)
                     orderUpdatesSocket = socket
+                    defer {
+                        socket.cancel(with: .goingAway, reason: nil)
+                        if orderUpdatesSocket === socket {
+                            orderUpdatesSocket = nil
+                        }
+                    }
                     socket.resume()
+                    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                        socket.sendPing { error in
+                            if let error {
+                                continuation.resume(throwing: error)
+                            } else {
+                                continuation.resume(returning: ())
+                            }
+                        }
+                    }
+                    retryDelay = 2
+                    await refreshOrders(for: restaurant)
                     while !Task.isCancelled {
                         let message = try await socket.receive()
                         guard case let .string(text) = message,
@@ -888,13 +934,24 @@ final class ManagementModel: ObservableObject {
                         }
                         await refreshOrders(for: restaurant)
                     }
-                } catch {
-                    orderUpdatesSocket?.cancel(with: .goingAway, reason: nil)
-                    orderUpdatesSocket = nil
-                }
+                } catch {}
                 guard !Task.isCancelled, selectedRestaurant?.appid == restaurant.appid else { return }
-                try? await Task.sleep(for: .seconds(retryDelay))
+                do {
+                    try await Task.sleep(for: .seconds(retryDelay))
+                } catch {
+                    return
+                }
                 retryDelay = min(retryDelay * 2, 30)
+            }
+        }
+        orderPollingTask = Task { [weak self] in
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(for: .seconds(30))
+                } catch {
+                    return
+                }
+                guard let self, selectedRestaurant?.appid == restaurant.appid else { return }
                 await refreshOrders(for: restaurant)
             }
         }
@@ -903,21 +960,31 @@ final class ManagementModel: ObservableObject {
     private func stopOrderUpdates() {
         orderUpdatesTask?.cancel()
         orderUpdatesTask = nil
+        orderPollingTask?.cancel()
+        orderPollingTask = nil
         orderUpdatesSocket?.cancel(with: .goingAway, reason: nil)
         orderUpdatesSocket = nil
     }
 
     private func refreshOrders(for restaurant: ManagementRestaurant) async {
         guard selectedRestaurant?.appid == restaurant.appid else { return }
-        await performAuthenticated { token in
-            orders = try await api.orders(for: restaurant.appid, token: token)
-        }
+        refreshOrdersAgain = true
+        guard !isRefreshingOrders else { return }
+        isRefreshingOrders = true
+        defer { isRefreshingOrders = false }
+        repeat {
+            refreshOrdersAgain = false
+            await performAuthenticated(background: true) { token in
+                try await loadOrders(for: restaurant, token: token)
+            }
+        } while refreshOrdersAgain && !Task.isCancelled && selectedRestaurant?.appid == restaurant.appid
     }
 
     private func performAuthenticated(
+        background: Bool = false,
         _ operation: (String) async throws -> Void
     ) async {
-        await perform {
+        await perform(background: background) {
             guard let accessToken else {
                 throw ManagementAPIError(statusCode: 401, message: "Authentication required.")
             }
@@ -941,14 +1008,18 @@ final class ManagementModel: ObservableObject {
         }
     }
 
-    private func perform(_ operation: () async throws -> Void) async {
-        isLoading = true
-        errorMessage = nil
-        defer { isLoading = false }
+    private func perform(background: Bool = false, _ operation: () async throws -> Void) async {
+        if !background {
+            isLoading = true
+            errorMessage = nil
+        }
+        defer { if !background { isLoading = false } }
         do {
             try await operation()
         } catch {
-            errorMessage = error.localizedDescription
+            if !Task.isCancelled && !background {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 }

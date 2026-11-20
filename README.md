@@ -500,6 +500,12 @@ The dashboard fetches order data through staff-protected HTTP endpoints,
 reconnects automatically, and reconciles every 30 seconds to recover missed
 events. If WebSockets are unavailable, stored orders remain accessible.
 
+Native management apps keep an authenticated `/management/` subscription,
+refresh orders after connecting and returning to the foreground, and reconcile
+every 30 seconds. Reconnecting catches up missed orders; switching restaurants
+or signing out stops the old subscription. Order data is always fetched through
+the tenant-authorized management API, not supplied by the socket.
+
 Customers who keep the menu open see a separate order-status modal whenever a known status changes.
 If it has been closed, it reopens; an already-open modal updates in place.
 All unfinished orders are tracked, including concurrent orders, with a prominent
