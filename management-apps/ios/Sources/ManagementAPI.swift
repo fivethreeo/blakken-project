@@ -43,6 +43,13 @@ struct ManagementDish: Decodable, Identifiable {
 
 struct ManagementOrderPage: Decodable {
     let results: [ManagementOrder]
+    let count: Int
+    let page: Int
+    let pages: Int
+}
+
+enum ManagementOrderFilter: String, CaseIterable {
+    case active, all, new, preparing, ready, completed, cancelled
 }
 
 struct ManagementOrderLine: Decodable, Identifiable {
@@ -501,11 +508,16 @@ struct ManagementAPI {
         )
     }
 
-    func orders(for appid: String, token: String) async throws -> [ManagementOrder] {
-        let response: ManagementOrderPage = try await request(
-            "api/v1/management/restaurants/\(appid)/orders/", token: token
-        )
-        return response.results
+    func orders(
+        for appid: String, token: String, filter: ManagementOrderFilter, page: Int
+    ) async throws -> ManagementOrderPage {
+        var request = makeRequest("api/v1/management/restaurants/\(appid)/orders/")
+        request.url = request.url?.appending(queryItems: [
+            URLQueryItem(name: "status", value: filter.rawValue),
+            URLQueryItem(name: "page", value: String(page))
+        ])
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        return try await send(request)
     }
 
     func updateOrder(
@@ -618,6 +630,10 @@ final class ManagementModel: ObservableObject {
     @Published private(set) var menus: [ManagementMenu] = []
     @Published private(set) var menuContent: ManagementMenuContent?
     @Published private(set) var orders: [ManagementOrder] = []
+    @Published private(set) var orderFilter: ManagementOrderFilter = .active
+    @Published private(set) var orderPage = 1
+    @Published private(set) var orderPages = 1
+    @Published private(set) var orderCount = 0
     @Published private(set) var shopStatus: ManagementShopStatus?
     @Published private(set) var selectedRestaurant: ManagementRestaurant?
     @Published var errorMessage: String?
@@ -646,7 +662,7 @@ final class ManagementModel: ObservableObject {
         selectedRestaurant = restaurant
         menus = []
         menuContent = nil
-        orders = []
+        resetOrderSelection()
         shopStatus = nil
         await performAuthenticated { token in
             try await loadRestaurant(restaurant, token: token)
@@ -838,6 +854,34 @@ final class ManagementModel: ObservableObject {
         }
     }
 
+    func filterOrders(_ filter: ManagementOrderFilter) async {
+        guard filter != orderFilter, let restaurant = selectedRestaurant else { return }
+        resetOrderSelection(filter: filter)
+        await performAuthenticated { token in
+            try await loadOrders(for: restaurant, token: token)
+        }
+    }
+
+    func showOrderPage(_ page: Int) async {
+        guard page != orderPage, (1...orderPages).contains(page),
+              let restaurant = selectedRestaurant else { return }
+        ordersRequest += 1
+        orderPage = page
+        orders = []
+        await performAuthenticated { token in
+            try await loadOrders(for: restaurant, token: token)
+        }
+    }
+
+    private func resetOrderSelection(filter: ManagementOrderFilter = .active) {
+        ordersRequest += 1
+        orderFilter = filter
+        orderPage = 1
+        orderPages = 1
+        orderCount = 0
+        orders = []
+    }
+
     func signOut() {
         stopOrderUpdates()
         accessToken = nil
@@ -845,7 +889,7 @@ final class ManagementModel: ObservableObject {
         restaurants = []
         menus = []
         menuContent = nil
-        orders = []
+        resetOrderSelection()
         shopStatus = nil
         selectedRestaurant = nil
         errorMessage = nil
@@ -856,7 +900,7 @@ final class ManagementModel: ObservableObject {
         selectedRestaurant = nil
         menus = []
         menuContent = nil
-        orders = []
+        resetOrderSelection()
         shopStatus = nil
     }
 
@@ -885,10 +929,25 @@ final class ManagementModel: ObservableObject {
     private func loadOrders(for restaurant: ManagementRestaurant, token: String) async throws {
         ordersRequest += 1
         let request = ordersRequest
-        let loadedOrders = try await api.orders(for: restaurant.appid, token: token)
+        let filter = orderFilter
+        let page = orderPage
+        let loadedOrders: ManagementOrderPage
+        do {
+            loadedOrders = try await api.orders(
+                for: restaurant.appid, token: token, filter: filter, page: page
+            )
+        } catch let error as ManagementAPIError where error.statusCode == 400 && page > 1 {
+            loadedOrders = try await api.orders(
+                for: restaurant.appid, token: token, filter: filter, page: 1
+            )
+        }
         guard !Task.isCancelled, request == ordersRequest,
-              selectedRestaurant?.appid == restaurant.appid else { return }
-        orders = loadedOrders
+              selectedRestaurant?.appid == restaurant.appid,
+              orderFilter == filter, orderPage == page else { return }
+        orders = loadedOrders.results
+        orderCount = loadedOrders.count
+        orderPages = loadedOrders.pages
+        orderPage = loadedOrders.page
     }
 
     private func startOrderUpdates() {

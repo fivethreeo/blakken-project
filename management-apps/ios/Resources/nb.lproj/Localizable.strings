@@ -7,6 +7,16 @@
 "management.restaurants" = "Restauranter";
 "management.menus" = "Menyer";
 "management.orders" = "Bestillinger";
+"management.orderFilter" = "Bestillingsstatus";
+"management.filterActive" = "Aktive";
+"management.filterAll" = "Alle";
+"management.filterNew" = "Nye";
+"management.filterCompleted" = "Fullførte";
+"management.filterCancelled" = "Kansellerte";
+"management.orderCount" = "Bestillinger: %ld";
+"management.orderPage" = "Side %ld av %ld";
+"management.previousPage" = "Forrige";
+"management.nextPage" = "Neste";
 "management.loading" = "Laster …";
 "management.emptyRestaurants" = "Ingen restauranter er knyttet til kontoen.";
 "management.emptyMenus" = "Ingen menyer ennå.";
