@@ -22,6 +22,7 @@
 "customer.orderNumber" = "Bestilling";
 "customer.orderStatus" = "Bestillingsstatus";
 "customer.orderStatusUnavailable" = "Bestillingsstatusen er ikke tilgjengelig akkurat nå.";
+"customer.liveUpdates" = "Sanntidsoppdateringer";
 "customer.liveConnected" = "Tilkoblet sanntidsoppdateringer";
 "customer.liveReconnecting" = "Kobler til sanntidsoppdateringer …";
 "customer.checkout" = "Bestill";
