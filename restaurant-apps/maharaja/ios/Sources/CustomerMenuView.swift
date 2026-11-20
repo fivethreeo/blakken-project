@@ -471,12 +471,18 @@ private struct CustomerCheckoutView: View {
             }
             .disabled(!model.canEditOrder)
             if let receipt = model.orderReceipt {
-                Section("customer.confirmation") {
+                Section {
                     HStack {
                         Text("customer.orderNumber")
                         Text("#\(receipt.order.id)")
                     }
                     Text("\(receipt.order.total) \(receipt.order.currency)")
+                } header: {
+                    if let orderStatus = model.orderStatus, !model.orderStatusUnavailable {
+                        Text(orderStatus.statusLabel)
+                    } else {
+                        Text("customer.confirmation")
+                    }
                 }
                 Section("customer.orderStatus") {
                     if let orderStatus = model.orderStatus {

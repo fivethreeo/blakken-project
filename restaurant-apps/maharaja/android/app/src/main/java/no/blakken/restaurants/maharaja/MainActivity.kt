@@ -54,6 +54,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -76,6 +78,9 @@ private fun CustomerMenuScreen(lifecycle: Lifecycle) {
     var note by remember { mutableStateOf("") }
     var submissionId by remember { mutableStateOf(UUID.randomUUID().toString()) }
     var receipt by remember { mutableStateOf<OrderReceipt?>(null) }
+    var orderStatus by remember { mutableStateOf<CustomerOrderStatus?>(null) }
+    var orderStatusUnavailable by remember { mutableStateOf(false) }
+    val orderStatusMutex = remember { Mutex() }
     var loading by remember { mutableStateOf(true) }
     var submitting by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -96,6 +101,8 @@ private fun CustomerMenuScreen(lifecycle: Lifecycle) {
             if (quantity <= 0) remove(dishId) else put(dishId, quantity.coerceAtMost(99))
         }
         receipt = null
+        orderStatus = null
+        orderStatusUnavailable = false
         submissionId = UUID.randomUUID().toString()
     }
 
@@ -154,6 +161,49 @@ private fun CustomerMenuScreen(lifecycle: Lifecycle) {
     }
 
     LaunchedEffect(Unit) { reload() }
+    LaunchedEffect(api, lifecycle, receipt?.id) {
+        orderStatus = null
+        orderStatusUnavailable = false
+        val orderId = receipt?.id ?: return@LaunchedEffect
+        suspend fun refreshOrderStatus() = orderStatusMutex.withLock {
+            try {
+                val updated = api.customerOrders().firstOrNull { it.id == orderId }
+                if (isActive && receipt?.id == orderId) {
+                    orderStatus = updated
+                    orderStatusUnavailable = updated == null
+                }
+            } catch (failure: CancellationException) {
+                throw failure
+            } catch (_: Exception) {
+                if (isActive && receipt?.id == orderId) orderStatusUnavailable = true
+            }
+        }
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            launch {
+                while (isActive) {
+                    refreshOrderStatus()
+                    delay(30_000)
+                }
+            }
+            launch {
+                var retryDelay = 1_000L
+                while (isActive) {
+                    try {
+                        api.orderUpdates().collect {
+                            retryDelay = 1_000L
+                            refreshOrderStatus()
+                        }
+                    } catch (failure: CancellationException) {
+                        throw failure
+                    } catch (_: Exception) {
+                        // Polling recovers status changes while the socket reconnects.
+                    }
+                    delay(retryDelay)
+                    retryDelay = (retryDelay * 2).coerceAtMost(15_000L)
+                }
+            }
+        }
+    }
     LaunchedEffect(api, lifecycle) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             launch {
@@ -357,9 +407,16 @@ private fun CustomerMenuScreen(lifecycle: Lifecycle) {
                             item {
                                 Card(modifier = Modifier.fillMaxWidth()) {
                                     Column(Modifier.padding(12.dp)) {
-                                        Text(stringResource(R.string.confirmation), style = MaterialTheme.typography.titleMedium)
+                                        Text(
+                                            orderStatus?.statusLabel?.takeUnless { orderStatusUnavailable }
+                                                ?: stringResource(R.string.confirmation),
+                                            style = MaterialTheme.typography.titleMedium,
+                                        )
                                         Text("${stringResource(R.string.order_number)} #${orderReceipt.id}")
                                         Text("${orderReceipt.total} ${orderReceipt.currency}")
+                                        if (orderStatusUnavailable) {
+                                            Text(stringResource(R.string.order_status_unavailable))
+                                        }
                                     }
                                 }
                             }

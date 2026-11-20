@@ -36,6 +36,7 @@ data class Category(val id: Int, val name: String, val dishes: List<Dish>)
 data class CustomerMenu(val id: Int, val name: String, val categories: List<Category>)
 data class ShopStatus(val restaurant: String, val isOpen: Boolean, val message: String)
 data class OrderReceipt(val id: Int, val total: String, val currency: String)
+data class CustomerOrderStatus(val id: Int, val statusLabel: String)
 
 class CustomerApi(private val context: Context) {
     private val websocketClient = OkHttpClient()
@@ -60,12 +61,33 @@ class CustomerApi(private val context: Context) {
         )
     }
 
-    fun shopUpdates(): Flow<Unit> = callbackFlow {
-        val base = URL(BuildConfig.API_BASE_URL)
+    suspend fun customerOrders(): List<CustomerOrderStatus> {
+        val results = request("orders/mine/").getJSONArray("results")
+        return (0 until results.length()).map { index ->
+            val order = results.getJSONObject(index)
+            CustomerOrderStatus(order.getInt("id"), order.getString("status_label"))
+        }
+    }
+
+    fun shopUpdates(): Flow<Unit> {
         val appid = UUID.fromString(BuildConfig.RESTAURANT_APP_ID).toString()
+        return updates("shop/?appid=$appid", "shop.changed")
+    }
+
+    fun orderUpdates(): Flow<Unit> {
+        val cookies = CookieHandler.getDefault()
+            .get(URL("${BuildConfig.API_BASE_URL.trimEnd('/')}/orders/mine/").toURI(), emptyMap())
+            .entries.firstOrNull { it.key.equals("Cookie", ignoreCase = true) }
+            ?.value?.joinToString("; ").orEmpty()
+        return updates("orders/", "orders.changed", cookies)
+    }
+
+    private fun updates(path: String, eventName: String, cookies: String = ""): Flow<Unit> = callbackFlow {
+        val base = URL(BuildConfig.API_BASE_URL)
         val request = Request.Builder()
-            .url("${BuildConfig.WS_BASE_URL.trimEnd('/')}/shop/?appid=$appid")
+            .url("${BuildConfig.WS_BASE_URL.trimEnd('/')}/$path")
             .header("Origin", "${base.protocol}://${base.authority}")
+            .apply { if (cookies.isNotEmpty()) header("Cookie", cookies) }
             .build()
         val socket = websocketClient.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
@@ -74,7 +96,7 @@ class CustomerApi(private val context: Context) {
 
             override fun onMessage(webSocket: WebSocket, text: String) {
                 val event = runCatching { JSONObject(text).optString("event") }.getOrNull()
-                if (event == "shop.changed") trySend(Unit)
+                if (event == eventName) trySend(Unit)
             }
 
             override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {

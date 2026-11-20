@@ -19,6 +19,7 @@
     <string name="back_to_menu">Menu</string>
     <string name="checkout_count">Checkout (%1$d)</string>
     <string name="confirmation">Order receipt</string>
+    <string name="order_status_unavailable">The order status is unavailable right now.</string>
     <string name="order_number">Order</string>
     <string name="checkout">Checkout</string>
     <string name="customer_name">Your name</string>
