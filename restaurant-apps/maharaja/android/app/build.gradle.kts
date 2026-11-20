@@ -4,12 +4,26 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-val apiBaseUrl = providers.gradleProperty("BLAAKEN_API_BASE_URL")
+val apiBaseUrl = providers.gradleProperty("BLAKKEN_API_BASE_URL")
     .orElse("http://10.0.2.2:8000/")
     .get()
 val restaurantAppId = providers.gradleProperty("MAHARAJA_APP_ID")
     .orElse("REPLACE_WITH_RESTAURANT_APP_ID")
     .get()
+val websocketBaseUrl = providers.gradleProperty("BLAKKEN_WS_BASE_URL")
+    .orElse("ws://10.0.2.2:8002/")
+    .get()
+val playIntegrityRequired = providers.gradleProperty("PLAY_INTEGRITY_REQUIRED")
+    .map { it.toBooleanStrict() }
+    .orElse(true)
+    .get()
+val playIntegrityCloudProjectNumber = providers.gradleProperty("PLAY_INTEGRITY_CLOUD_PROJECT_NUMBER")
+    .orElse("0")
+    .get()
+val appRegistrationId = providers.gradleProperty("APP_REGISTRATION_ID").orElse("").get()
+require(playIntegrityCloudProjectNumber.toLongOrNull() != null) {
+    "PLAY_INTEGRITY_CLOUD_PROJECT_NUMBER must be a numeric Google Cloud project number."
+}
 
 android {
     namespace = "no.blakken.restaurants.maharaja"
@@ -32,6 +46,14 @@ android {
         versionName = "1.0"
         buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
         buildConfigField("String", "RESTAURANT_APP_ID", "\"$restaurantAppId\"")
+        buildConfigField("String", "WS_BASE_URL", "\"$websocketBaseUrl\"")
+        buildConfigField("Boolean", "PLAY_INTEGRITY_REQUIRED", playIntegrityRequired.toString())
+        buildConfigField("String", "APP_REGISTRATION_ID", "\"$appRegistrationId\"")
+        buildConfigField(
+            "String",
+            "PLAY_INTEGRITY_CLOUD_PROJECT_NUMBER",
+            "\"$playIntegrityCloudProjectNumber\"",
+        )
     }
 
     buildFeatures {
@@ -48,5 +70,8 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
+    implementation("com.google.android.play:integrity:1.6.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

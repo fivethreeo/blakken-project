@@ -30,6 +30,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -43,23 +44,29 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { CustomerMenuScreen() }
+        setContent { CustomerMenuScreen(lifecycle) }
     }
 }
 
 @Composable
-private fun CustomerMenuScreen() {
+private fun CustomerMenuScreen(lifecycle: Lifecycle) {
     val context = LocalContext.current
     val api = remember(context) { CustomerApi(context) }
     val scope = rememberCoroutineScope()
     var menu by remember { mutableStateOf<CustomerMenu?>(null) }
     var status by remember { mutableStateOf<ShopStatus?>(null) }
+    var statusRequest by remember { mutableIntStateOf(0) }
     var quantities by remember { mutableStateOf(emptyMap<Int, Int>()) }
     var customerName by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
@@ -85,13 +92,19 @@ private fun CustomerMenuScreen() {
         submissionId = UUID.randomUUID().toString()
     }
 
+    suspend fun refreshStatus() {
+        val request = ++statusRequest
+        val updated = api.status()
+        if (request == statusRequest) status = updated
+    }
+
     fun reload() {
         scope.launch {
             loading = true
             error = null
             try {
                 menu = api.menu()
-                status = api.status()
+                refreshStatus()
             } catch (failure: Exception) {
                 error = failure.localizedMessage ?: context.getString(R.string.request_failed)
             } finally {
@@ -129,6 +142,45 @@ private fun CustomerMenuScreen() {
     }
 
     LaunchedEffect(Unit) { reload() }
+    LaunchedEffect(api, lifecycle) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            launch {
+                while (isActive) {
+                    try {
+                        refreshStatus()
+                    } catch (failure: CancellationException) {
+                        throw failure
+                    } catch (_: Exception) {
+                        // Keep the last known status while disconnected.
+                    }
+                    delay(30_000)
+                }
+            }
+            launch {
+                var retryDelay = 1_000L
+                while (isActive) {
+                    try {
+                        api.shopUpdates().collect {
+                            retryDelay = 1_000L
+                            try {
+                                refreshStatus()
+                            } catch (failure: CancellationException) {
+                                throw failure
+                            } catch (_: Exception) {
+                                // The periodic refresh can recover a missed hint.
+                            }
+                        }
+                    } catch (failure: CancellationException) {
+                        throw failure
+                    } catch (_: Exception) {
+                        // Retry the public subscription after connection failure.
+                    }
+                    delay(retryDelay)
+                    retryDelay = (retryDelay * 2).coerceAtMost(15_000L)
+                }
+            }
+        }
+    }
     val dishMap = menu?.categories.orEmpty().flatMap { it.dishes }.associateBy { it.id }
     val cartItems = quantities.entries.mapNotNull { (id, quantity) ->
         dishMap[id]?.let { it to quantity }

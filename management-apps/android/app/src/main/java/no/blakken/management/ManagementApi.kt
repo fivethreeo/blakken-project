@@ -1,8 +1,15 @@
 package no.blakken.management
 
 import android.content.Context
+import android.util.Base64
+import com.google.android.play.core.integrity.IntegrityManagerFactory
+import com.google.android.play.core.integrity.StandardIntegrityManager.PrepareIntegrityTokenRequest
+import com.google.android.play.core.integrity.StandardIntegrityManager.StandardIntegrityTokenRequest
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -11,10 +18,15 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONObject
 import java.io.IOException
+import java.net.CookieHandler
+import java.net.CookieManager
+import java.net.CookiePolicy
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
+import java.security.MessageDigest
 import java.util.Locale
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 
@@ -55,20 +67,76 @@ data class Tokens(val access: String, val refresh: String)
 
 class ManagementApi(private val context: Context) {
     private val websocketClient = OkHttpClient()
+    private val integrityManager by lazy {
+        IntegrityManagerFactory.createStandard(context.applicationContext)
+    }
 
     suspend fun signIn(email: String, password: String): Tokens =
-        request(
-            "api/v1/auth/token/",
-            method = "POST",
-            body = JSONObject().put("email", email).put("password", password),
+        authenticate(
+            "token",
+            JSONObject().put("email", email).put("password", password),
         ).toTokens()
 
     suspend fun refresh(refresh: String): Tokens =
-        request(
-            "api/v1/auth/refresh/",
-            method = "POST",
-            body = JSONObject().put("refresh", refresh),
+        authenticate(
+            "refresh",
+            JSONObject().put("refresh", refresh),
         ).toTokens()
+
+    private suspend fun authenticate(operation: String, body: JSONObject): JSONObject {
+        val bodyBytes = body.toString().toByteArray(Charsets.UTF_8)
+        if (!BuildConfig.PLAY_INTEGRITY_REQUIRED) {
+            return request("api/v1/auth/$operation/", "POST", bodyBytes = bodyBytes)
+        }
+        val base = URI(BuildConfig.API_BASE_URL)
+        check(base.scheme.equals("https", ignoreCase = true) && !base.host.isNullOrBlank()
+            && base.rawUserInfo == null) { "Play Integrity authentication requires an HTTPS API URL." }
+        val registrationId = BuildConfig.APP_REGISTRATION_ID.lowercase(Locale.ROOT)
+        check(runCatching { UUID.fromString(registrationId).toString() }.getOrNull() == registrationId) {
+            "Play Integrity authentication requires a valid app registration UUID."
+        }
+        val projectNumber = BuildConfig.PLAY_INTEGRITY_CLOUD_PROJECT_NUMBER
+        check(projectNumber > 0) { "Play Integrity requires a linked Google Cloud project number." }
+        val headers = mapOf("X-App-Registration-ID" to registrationId)
+        val session = request("api/v1/customer/session/", headers = headers)
+        val csrfToken = session.getString("csrf_token")
+        check(csrfToken.isNotBlank() && session.getString("attestation_session").isNotBlank()) {
+            "The attestation session is unavailable."
+        }
+        val bodyHash = MessageDigest.getInstance("SHA-256").digest(bodyBytes)
+        val challenge = request(
+            "api/v1/official/android/play-integrity/challenges/",
+            method = "POST",
+            body = JSONObject().put("request_hash", bodyHash.toHex()),
+            csrfToken = csrfToken,
+            headers = headers,
+        )
+        val challengeBytes = Base64.decode(challenge.getString("challenge"), Base64.DEFAULT)
+        check(challengeBytes.size == 32) { "The server returned an invalid integrity challenge." }
+        val scope = "POST\nmanagement\n$registrationId\n$operation\n".toByteArray(Charsets.UTF_8)
+        val requestHash = Base64.encodeToString(
+            MessageDigest.getInstance("SHA-256").digest(scope + challengeBytes + bodyHash),
+            Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP,
+        )
+        // A fresh provider avoids retaining invalid or expired providers across auth requests.
+        val provider = integrityManager.prepareIntegrityToken(
+            PrepareIntegrityTokenRequest.builder().setCloudProjectNumber(projectNumber).build(),
+        ).await()
+        val integrityToken = provider.request(
+            StandardIntegrityTokenRequest.builder().setRequestHash(requestHash).build(),
+        ).await().token()
+        currentCoroutineContext().ensureActive()
+        return request(
+            "api/v1/official/management/android/auth/$operation/",
+            method = "POST",
+            bodyBytes = bodyBytes,
+            csrfToken = csrfToken,
+            headers = headers + mapOf(
+                "X-Play-Integrity-Challenge-ID" to challenge.getString("challenge_id"),
+                "X-Play-Integrity-Token" to integrityToken,
+            ),
+        )
+    }
 
     suspend fun restaurants(token: String): List<Restaurant> =
         request("api/v1/management/restaurants/", token = token)
@@ -316,7 +384,11 @@ class ManagementApi(private val context: Context) {
         method: String = "GET",
         body: JSONObject? = null,
         token: String? = null,
+        bodyBytes: ByteArray? = null,
+        csrfToken: String? = null,
+        headers: Map<String, String> = emptyMap(),
     ): JSONObject = withContext(Dispatchers.IO) {
+        currentCoroutineContext().ensureActive()
         val connection = URL(BuildConfig.API_BASE_URL.trimEnd('/') + "/" + path)
             .openConnection() as HttpURLConnection
         try {
@@ -326,14 +398,23 @@ class ManagementApi(private val context: Context) {
             connection.setRequestProperty("Accept", "application/json")
             connection.setRequestProperty("Accept-Language", Locale.getDefault().toLanguageTag())
             token?.let { connection.setRequestProperty("Authorization", "Bearer $it") }
-            if (body != null) {
+            headers.forEach { (name, value) -> connection.setRequestProperty(name, value) }
+            if (csrfToken != null) {
+                connection.instanceFollowRedirects = false
+                connection.setRequestProperty("X-CSRFToken", csrfToken)
+                val base = URL(BuildConfig.API_BASE_URL)
+                connection.setRequestProperty("Origin", "${base.protocol}://${base.authority}")
+            }
+            val encodedBody = bodyBytes ?: body?.toString()?.toByteArray(Charsets.UTF_8)
+            if (encodedBody != null) {
                 connection.doOutput = true
                 connection.setRequestProperty("Content-Type", "application/json")
-                connection.outputStream.use { it.write(body.toString().toByteArray()) }
+                connection.outputStream.use { it.write(encodedBody) }
             }
             val responseCode = connection.responseCode
             val stream = if (responseCode in 200..299) connection.inputStream else connection.errorStream
             val responseText = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            currentCoroutineContext().ensureActive()
             val response = runCatching { JSONObject(responseText) }.getOrElse { JSONObject() }
             if (responseCode !in 200..299) {
                 throw ManagementApiError(
@@ -348,6 +429,9 @@ class ManagementApi(private val context: Context) {
     }
 
     private fun JSONObject.toTokens() = Tokens(getString("access"), getString("refresh"))
+
+    private fun ByteArray.toHex(): String =
+        joinToString("") { "%02x".format(it.toInt() and 0xff) }
 
     private fun dishBody(
         name: String,
@@ -364,6 +448,14 @@ class ManagementApi(private val context: Context) {
 
     private fun org.json.JSONArray.toStringList() =
         (0 until length()).map { getString(it) }
+
+    companion object {
+        init {
+            if (CookieHandler.getDefault() !is CookieManager) {
+                CookieHandler.setDefault(CookieManager(null, CookiePolicy.ACCEPT_ORIGINAL_SERVER))
+            }
+        }
+    }
 }
 
 class ManagementApiError(val statusCode: Int, message: String) : IOException(message)

@@ -50,6 +50,8 @@ jobs:
           "INFOPLIST_KEY_API_BASE_URL=$API_BASE_URL"
           "INFOPLIST_KEY_RESTAURANT_APP_ID=$RESTAURANT_APP_ID"
           "INFOPLIST_KEY_TS_WS_BACKEND_URL=$WEBSOCKET_BASE_URL"
+          INFOPLIST_KEY_APP_ATTEST_REQUIRED=NO
+          INFOPLIST_KEY_APP_REGISTRATION_ID=
           build
 
       - name: Configure API base URL and restaurant app ID
@@ -70,6 +72,8 @@ jobs:
           info["API_BASE_URL"] = os.environ["API_BASE_URL"]
           info["RESTAURANT_APP_ID"] = os.environ["RESTAURANT_APP_ID"]
           info["TS_WS_BACKEND_URL"] = os.environ["WEBSOCKET_BASE_URL"]
+          info["APP_ATTEST_REQUIRED"] = False
+          info["APP_REGISTRATION_ID"] = ""
           with info_path.open("wb") as info_file:
               plistlib.dump(info, info_file)
           with info_path.open("rb") as info_file:
@@ -77,6 +81,7 @@ jobs:
           assert configured["API_BASE_URL"] == os.environ["API_BASE_URL"]
           assert configured["RESTAURANT_APP_ID"] == os.environ["RESTAURANT_APP_ID"]
           assert configured["TS_WS_BACKEND_URL"] == os.environ["WEBSOCKET_BASE_URL"]
+          assert configured["APP_ATTEST_REQUIRED"] is False
           PY
 
       - name: Package unsigned IPA for SideStore

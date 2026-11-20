@@ -1,4 +1,6 @@
 import Combine
+import CryptoKit
+import DeviceCheck
 import Foundation
 
 struct ManagementRestaurant: Decodable, Identifiable {
@@ -124,6 +126,38 @@ private struct APIErrorBody: Decodable {
     let error: String
 }
 
+private struct AttestationSession: Decodable {
+    let csrfToken: String
+    let attestationSession: String
+}
+
+private struct AppAttestChallenge: Decodable {
+    let challengeId: String
+    let challenge: String
+
+    func decoded() throws -> Data {
+        guard let data = Data(base64Encoded: challenge), data.count == 32 else {
+            throw ManagementAPIError(statusCode: 0, message: "Invalid App Attest challenge.")
+        }
+        return data
+    }
+}
+
+private struct AppAttestChallengeRequest: Encodable {
+    let purpose: String
+    let requestHash: String?
+}
+
+private struct AppAttestRegistration: Encodable {
+    let keyId: String
+    let challengeId: String
+    let attestationObject: String
+}
+
+private struct AppAttestRegistrationResult: Decodable {
+    let registered: Bool
+}
+
 struct ManagementAPI {
     let baseURL: URL
 
@@ -149,21 +183,185 @@ struct ManagementAPI {
     }
 
     func signIn(email: String, password: String) async throws -> AccessTokens {
-        try await request(
-            "api/v1/auth/token/",
-            method: "POST",
-            body: Credentials(email: email, password: password),
-            token: nil
+        try await authenticate(
+            operation: "token",
+            body: Credentials(email: email, password: password)
         )
     }
 
     func refresh(_ refreshToken: String) async throws -> AccessTokens {
-        try await request(
-            "api/v1/auth/refresh/",
-            method: "POST",
-            body: RefreshRequest(refresh: refreshToken),
-            token: nil
+        try await authenticate(
+            operation: "refresh",
+            body: RefreshRequest(refresh: refreshToken)
         )
+    }
+
+    private var appAttestRequired: Bool {
+        let value = Bundle.main.object(forInfoDictionaryKey: "APP_ATTEST_REQUIRED")
+        return (value as? Bool)
+            ?? ((value as? String).map { ["yes", "true", "1"].contains($0.lowercased()) } ?? false)
+    }
+
+    private func authenticate<Body: Encodable>(
+        operation: String,
+        body: Body
+    ) async throws -> AccessTokens {
+        let bodyData = try encode(body)
+        guard appAttestRequired else {
+            var request = makeRequest("api/v1/auth/\(operation)/", method: "POST")
+            request.httpBody = bodyData
+            return try await send(request)
+        }
+        guard baseURL.scheme?.lowercased() == "https",
+              let host = baseURL.host, !host.isEmpty, baseURL.user == nil,
+              let configured = Bundle.main.object(forInfoDictionaryKey: "APP_REGISTRATION_ID") as? String,
+              let uuid = UUID(uuidString: configured),
+              uuid.uuidString.lowercased() == configured.lowercased() else {
+            throw ManagementAPIError(
+                statusCode: 0,
+                message: "App Attest authentication requires HTTPS and a valid app registration UUID."
+            )
+        }
+        let registrationID = uuid.uuidString.lowercased()
+        var sessionRequest = makeRequest("api/v1/customer/session/")
+        sessionRequest.setValue(registrationID, forHTTPHeaderField: "X-App-Registration-ID")
+        let session: AttestationSession = try await send(sessionRequest)
+        guard !session.csrfToken.isEmpty, !session.attestationSession.isEmpty else {
+            throw ManagementAPIError(statusCode: 0, message: "The attestation session is unavailable.")
+        }
+        let service = DCAppAttestService.shared
+        guard service.isSupported else {
+            throw ManagementAPIError(statusCode: 0, message: "This device does not support App Attest.")
+        }
+        let cacheScope = try encode([baseURL.absoluteString, registrationID, session.attestationSession])
+        let storageKey = "management.app-attest-key." + hex(Data(SHA256.hash(data: cacheScope)))
+        let key = try await appAttestKey(
+            service: service, storageKey: storageKey, session: session, registrationID: registrationID
+        )
+        let bodyHash = Data(SHA256.hash(data: bodyData))
+        let challenge: AppAttestChallenge = try await attestationPost(
+            "api/v1/official/app-attest/challenges/",
+            body: AppAttestChallengeRequest(purpose: "assertion", requestHash: hex(bodyHash)),
+            session: session,
+            registrationID: registrationID
+        )
+        var clientData = Data("POST\nmanagement\n\(registrationID)\n\(operation)\n".utf8)
+        clientData.append(try challenge.decoded())
+        clientData.append(bodyHash)
+        let clientDataHash = Data(SHA256.hash(data: clientData))
+        try Task.checkCancellation()
+        let assertion: Data
+        do {
+            assertion = try await withCheckedThrowingContinuation { continuation in
+                service.generateAssertion(key, clientDataHash: clientDataHash) { value, error in
+                    if let error {
+                        continuation.resume(throwing: error)
+                    } else if let value {
+                        continuation.resume(returning: value)
+                    } else {
+                        continuation.resume(throwing: URLError(.badServerResponse))
+                    }
+                }
+            }
+        } catch {
+            UserDefaults.standard.removeObject(forKey: storageKey)
+            throw error
+        }
+        var request = attestationRequest(
+            "api/v1/official/management/ios/auth/\(operation)/",
+            session: session,
+            registrationID: registrationID
+        )
+        request.httpBody = bodyData
+        request.setValue(key, forHTTPHeaderField: "X-App-Attest-Key-ID")
+        request.setValue(challenge.challengeId, forHTTPHeaderField: "X-App-Attest-Challenge-ID")
+        request.setValue(assertion.base64EncodedString(), forHTTPHeaderField: "X-App-Attest-Assertion")
+        return try await send(request)
+    }
+
+    private func appAttestKey(
+        service: DCAppAttestService,
+        storageKey: String,
+        session: AttestationSession,
+        registrationID: String
+    ) async throws -> String {
+        if let key = UserDefaults.standard.string(forKey: storageKey) {
+            return key
+        }
+        try Task.checkCancellation()
+        let key: String = try await withCheckedThrowingContinuation { continuation in
+            service.generateKey { value, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else if let value {
+                    continuation.resume(returning: value)
+                } else {
+                    continuation.resume(throwing: URLError(.badServerResponse))
+                }
+            }
+        }
+        let challenge: AppAttestChallenge = try await attestationPost(
+            "api/v1/official/app-attest/challenges/",
+            body: AppAttestChallengeRequest(purpose: "attestation", requestHash: nil),
+            session: session,
+            registrationID: registrationID
+        )
+        let clientDataHash = Data(SHA256.hash(data: try challenge.decoded()))
+        try Task.checkCancellation()
+        let object: Data = try await withCheckedThrowingContinuation { continuation in
+            service.attestKey(key, clientDataHash: clientDataHash) { value, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else if let value {
+                    continuation.resume(returning: value)
+                } else {
+                    continuation.resume(throwing: URLError(.badServerResponse))
+                }
+            }
+        }
+        let result: AppAttestRegistrationResult = try await attestationPost(
+            "api/v1/official/app-attest/keys/",
+            body: AppAttestRegistration(
+                keyId: key,
+                challengeId: challenge.challengeId,
+                attestationObject: object.base64EncodedString()
+            ),
+            session: session,
+            registrationID: registrationID
+        )
+        guard result.registered else {
+            throw ManagementAPIError(statusCode: 0, message: "The server did not register the App Attest key.")
+        }
+        UserDefaults.standard.set(key, forKey: storageKey)
+        return key
+    }
+
+    private func attestationPost<Body: Encodable, Value: Decodable>(
+        _ path: String,
+        body: Body,
+        session: AttestationSession,
+        registrationID: String
+    ) async throws -> Value {
+        var request = attestationRequest(path, session: session, registrationID: registrationID)
+        request.httpBody = try encode(body)
+        return try await send(request)
+    }
+
+    private func attestationRequest(
+        _ path: String,
+        session: AttestationSession,
+        registrationID: String
+    ) -> URLRequest {
+        var request = makeRequest(path, method: "POST")
+        request.setValue(session.csrfToken, forHTTPHeaderField: "X-CSRFToken")
+        request.setValue(registrationID, forHTTPHeaderField: "X-App-Registration-ID")
+        let port = baseURL.port.map { ":\($0)" } ?? ""
+        request.setValue("https://\(baseURL.host!)\(port)", forHTTPHeaderField: "Origin")
+        return request
+    }
+
+    private func hex(_ data: Data) -> String {
+        data.map { String(format: "%02x", $0) }.joined()
     }
 
     func restaurants(token: String) async throws -> [ManagementRestaurant] {
@@ -363,19 +561,35 @@ struct ManagementAPI {
         body: Body?,
         token: String?
     ) async throws -> Value {
-        var request = URLRequest(url: baseURL.appending(path: path))
-        request.httpMethod = method
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue(Locale.preferredLanguages.first ?? "en", forHTTPHeaderField: "Accept-Language")
+        var request = makeRequest(path, method: method)
         if let body {
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            let encoder = JSONEncoder()
-            encoder.keyEncodingStrategy = .convertToSnakeCase
-            request.httpBody = try encoder.encode(body)
+            request.httpBody = try encode(body)
         }
         if let token {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
+        return try await send(request)
+    }
+
+    private func encode<Body: Encodable>(_ body: Body) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        return try encoder.encode(body)
+    }
+
+    private func makeRequest(_ path: String, method: String = "GET") -> URLRequest {
+        var request = URLRequest(url: baseURL.appending(path: path))
+        request.httpMethod = method
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(Locale.preferredLanguages.first ?? "en", forHTTPHeaderField: "Accept-Language")
+        if method != "GET" {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+        return request
+    }
+
+    private func send<Value: Decodable>(_ request: URLRequest) async throws -> Value {
+        try Task.checkCancellation()
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let response = response as? HTTPURLResponse else {
             throw URLError(.badServerResponse)

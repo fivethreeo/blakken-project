@@ -11,6 +11,11 @@ on:
         description: Maharaja restaurant app ID
         required: true
         type: string
+      websocket_base_url:
+        description: Public WebSocket base URL for live shop updates
+        required: true
+        default: wss://blakken.cavabonga.no/ws/
+        type: string
 
 permissions:
   contents: read
@@ -40,7 +45,15 @@ jobs:
         env:
           API_BASE_URL: ${{ inputs.api_base_url }}
           RESTAURANT_APP_ID: ${{ inputs.restaurant_app_id }}
-        run: gradle --no-daemon assembleDebug -PBLAAKEN_API_BASE_URL="$API_BASE_URL" -PMAHARAJA_APP_ID="$RESTAURANT_APP_ID"
+          WEBSOCKET_BASE_URL: ${{ inputs.websocket_base_url }}
+        run: >-
+          gradle --no-daemon assembleDebug
+          -PBLAKKEN_API_BASE_URL="$API_BASE_URL"
+          -PMAHARAJA_APP_ID="$RESTAURANT_APP_ID"
+          -PBLAKKEN_WS_BASE_URL="$WEBSOCKET_BASE_URL"
+          -PPLAY_INTEGRITY_REQUIRED=false
+          -PPLAY_INTEGRITY_CLOUD_PROJECT_NUMBER=0
+          -PAPP_REGISTRATION_ID=
 
       - uses: actions/upload-artifact@v4
         with:

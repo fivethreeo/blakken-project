@@ -27,6 +27,12 @@ final class CustomerMenuModel: ObservableObject {
     private var socketListener: Task<Void, Never>?
     private var reconnectTask: Task<Void, Never>?
     private var reconnectDelay: UInt64 = 1_000_000_000
+    private var shopUpdatesSocket: URLSessionWebSocketTask?
+    private var shopSocketListener: Task<Void, Never>?
+    private var shopReconnectTask: Task<Void, Never>?
+    private var shopReconnectDelay: UInt64 = 1_000_000_000
+    private var shopUpdatesActive = false
+    private var shopStatusRequest = 0
 
     var cartIsEmpty: Bool { quantities.values.allSatisfy { $0 == 0 } }
     var cartCount: Int { quantities.values.reduce(0, +) }
@@ -41,12 +47,19 @@ final class CustomerMenuModel: ObservableObject {
     func load() async {
         isLoading = true
         errorMessage = nil
+        shopUpdatesActive = true
+        shopStatusRequest += 1
+        let statusRequest = shopStatusRequest
+        connectShopUpdates()
         defer { isLoading = false }
         do {
             async let loadedMenu = api.loadMenu()
             async let loadedStatus = api.loadStatus()
             menu = try await loadedMenu
-            status = try await loadedStatus
+            let newStatus = try await loadedStatus
+            if statusRequest == shopStatusRequest {
+                status = newStatus
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -64,8 +77,21 @@ final class CustomerMenuModel: ObservableObject {
     }
 
     func resumeLiveUpdates() async {
+        shopUpdatesActive = true
+        connectShopUpdates()
+        await refreshShopStatus()
         await connectOrderUpdates()
         await refreshOrderStatus()
+    }
+
+    func stopShopUpdates() {
+        shopUpdatesActive = false
+        shopReconnectTask?.cancel()
+        shopReconnectTask = nil
+        shopSocketListener?.cancel()
+        shopSocketListener = nil
+        shopUpdatesSocket?.cancel(with: .goingAway, reason: nil)
+        shopUpdatesSocket = nil
     }
 
     func placeOrder() async {
@@ -107,6 +133,75 @@ final class CustomerMenuModel: ObservableObject {
             await refreshOrderStatus()
         } catch {
             errorMessage = error.localizedDescription
+            await refreshShopStatus()
+        }
+    }
+
+    private func refreshShopStatus() async {
+        shopStatusRequest += 1
+        let request = shopStatusRequest
+        do {
+            let newStatus = try await api.loadStatus()
+            if request == shopStatusRequest {
+                status = newStatus
+            }
+        } catch {
+            // Keep the last known state; the server also checks availability at checkout.
+        }
+    }
+
+    private func connectShopUpdates() {
+        guard shopUpdatesActive, shopUpdatesSocket == nil, shopReconnectTask == nil else { return }
+        do {
+            let socket = try api.makeShopUpdatesSocket()
+            shopUpdatesSocket = socket
+            socket.resume()
+            shopSocketListener = Task { [weak self] in
+                do {
+                    while !Task.isCancelled {
+                        let message = try await socket.receive()
+                        guard let self, self.shopUpdatesSocket === socket else { return }
+                        guard case .string(let text) = message,
+                              let data = text.data(using: .utf8),
+                              let notification = try? JSONDecoder().decode(OrderUpdateNotification.self, from: data),
+                              notification.event == "shop.changed" else {
+                            continue
+                        }
+                        await self.refreshShopStatus()
+                    }
+                } catch {
+                    guard let self, self.shopUpdatesSocket === socket else { return }
+                    socket.cancel(with: .goingAway, reason: nil)
+                    self.shopUpdatesSocket = nil
+                    self.shopSocketListener = nil
+                    self.reconnectShopUpdates()
+                }
+            }
+            socket.sendPing { [weak self] error in
+                Task { @MainActor in
+                    guard let self, self.shopUpdatesSocket === socket, error == nil else { return }
+                    self.shopReconnectDelay = 1_000_000_000
+                    await self.refreshShopStatus()
+                }
+            }
+        } catch {
+            reconnectShopUpdates()
+        }
+    }
+
+    private func reconnectShopUpdates() {
+        guard shopUpdatesActive, shopReconnectTask == nil else { return }
+        let delay = shopReconnectDelay
+        shopReconnectDelay = min(shopReconnectDelay * 2, 15_000_000_000)
+        shopReconnectTask = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: delay)
+            } catch {
+                return
+            }
+            guard let self else { return }
+            self.shopReconnectTask = nil
+            self.connectShopUpdates()
         }
     }
 
@@ -249,8 +344,11 @@ struct CustomerMenuView: View {
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active {
                     Task { await model.resumeLiveUpdates() }
+                } else {
+                    model.stopShopUpdates()
                 }
             }
+            .onDisappear { model.stopShopUpdates() }
         }
         .alert("customer.error", isPresented: Binding(
             get: { model.errorMessage != nil },
