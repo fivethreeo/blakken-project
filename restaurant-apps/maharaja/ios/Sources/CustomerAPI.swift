@@ -45,7 +45,9 @@ struct OrderSummary: Decodable {
 
 struct CustomerOrderStatus: Decodable, Identifiable {
     let id: Int
-    let statusLabel: String
+    let statusLabel: String?
+    let total: String?
+    let currency: String?
 }
 
 private struct CustomerOrders: Decodable {

@@ -17,7 +17,8 @@
     <string name="remove_from_cart">Fjern %1$s</string>
     <string name="empty_cart">Handlekurven er tom.</string>
     <string name="back_to_menu">Meny</string>
-    <string name="checkout_count">Til kassen (%1$d)</string>
+    <string name="checkout_count">Handlekurv og bestillinger (%1$d)</string>
+    <string name="cart_and_orders">Handlekurv og bestillinger</string>
     <string name="confirmation">Bestillingskvittering</string>
     <string name="order_status_unavailable">Bestillingsstatusen er ikke tilgjengelig akkurat nå.</string>
     <string name="order_number">Bestilling</string>

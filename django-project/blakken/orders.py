@@ -159,6 +159,7 @@ def customer_orders(request):
         orders = own_orders.filter(Q(status__in=active) | Q(pk__in=recent_finished))
     return JsonResponse({'results': [
         {'id': order.pk, 'status': order.status, 'status_label': order.get_status_display(),
+         'total': str(order.total), 'currency': 'NOK',
          'updated_at': order.updated_at.isoformat()}
         for order in orders
     ]})

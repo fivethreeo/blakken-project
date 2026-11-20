@@ -77,8 +77,7 @@ private fun CustomerMenuScreen(lifecycle: Lifecycle) {
     var phone by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
     var submissionId by remember { mutableStateOf(UUID.randomUUID().toString()) }
-    var receipt by remember { mutableStateOf<OrderReceipt?>(null) }
-    var orderStatus by remember { mutableStateOf<CustomerOrderStatus?>(null) }
+    var customerOrders by remember { mutableStateOf(emptyList<CustomerOrderStatus>()) }
     var orderStatusUnavailable by remember { mutableStateOf(false) }
     val orderStatusMutex = remember { Mutex() }
     var loading by remember { mutableStateOf(true) }
@@ -100,9 +99,6 @@ private fun CustomerMenuScreen(lifecycle: Lifecycle) {
         quantities = quantities.toMutableMap().apply {
             if (quantity <= 0) remove(dishId) else put(dishId, quantity.coerceAtMost(99))
         }
-        receipt = null
-        orderStatus = null
-        orderStatusUnavailable = false
         submissionId = UUID.randomUUID().toString()
     }
 
@@ -117,6 +113,17 @@ private fun CustomerMenuScreen(lifecycle: Lifecycle) {
         }
     }
 
+    suspend fun refreshOrderStatus() = orderStatusMutex.withLock {
+        try {
+            customerOrders = api.customerOrders()
+            orderStatusUnavailable = false
+        } catch (failure: CancellationException) {
+            throw failure
+        } catch (_: Exception) {
+            orderStatusUnavailable = true
+        }
+    }
+
     fun reload() {
         scope.launch {
             loading = true
@@ -124,6 +131,7 @@ private fun CustomerMenuScreen(lifecycle: Lifecycle) {
             try {
                 menu = api.menu()
                 refreshStatus()
+                refreshOrderStatus()
             } catch (failure: Exception) {
                 error = failure.localizedMessage ?: context.getString(R.string.request_failed)
             } finally {
@@ -142,7 +150,7 @@ private fun CustomerMenuScreen(lifecycle: Lifecycle) {
             submitting = true
             error = null
             try {
-                receipt = api.placeOrder(
+                val receipt = api.placeOrder(
                     menuId = loadedMenu.id,
                     submissionId = submissionId,
                     customerName = name,
@@ -150,8 +158,14 @@ private fun CustomerMenuScreen(lifecycle: Lifecycle) {
                     note = note.trim(),
                     items = quantities.entries.map { it.key to it.value },
                 )
+                orderStatusMutex.withLock {
+                    customerOrders = listOf(CustomerOrderStatus(
+                        receipt.id, null, receipt.total, receipt.currency,
+                    )) + customerOrders.filterNot { it.id == receipt.id }
+                }
                 quantities = emptyMap()
                 submissionId = UUID.randomUUID().toString()
+                refreshOrderStatus()
             } catch (failure: Exception) {
                 error = failure.localizedMessage ?: context.getString(R.string.request_failed)
             } finally {
@@ -161,23 +175,7 @@ private fun CustomerMenuScreen(lifecycle: Lifecycle) {
     }
 
     LaunchedEffect(Unit) { reload() }
-    LaunchedEffect(api, lifecycle, receipt?.id) {
-        orderStatus = null
-        orderStatusUnavailable = false
-        val orderId = receipt?.id ?: return@LaunchedEffect
-        suspend fun refreshOrderStatus() = orderStatusMutex.withLock {
-            try {
-                val updated = api.customerOrders().firstOrNull { it.id == orderId }
-                if (isActive && receipt?.id == orderId) {
-                    orderStatus = updated
-                    orderStatusUnavailable = updated == null
-                }
-            } catch (failure: CancellationException) {
-                throw failure
-            } catch (_: Exception) {
-                if (isActive && receipt?.id == orderId) orderStatusUnavailable = true
-            }
-        }
+    LaunchedEffect(api, lifecycle) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             launch {
                 while (isActive) {
@@ -189,6 +187,7 @@ private fun CustomerMenuScreen(lifecycle: Lifecycle) {
                 var retryDelay = 1_000L
                 while (isActive) {
                     try {
+                        api.prepareOrderUpdates()
                         api.orderUpdates().collect {
                             retryDelay = 1_000L
                             refreshOrderStatus()
@@ -295,7 +294,7 @@ private fun CustomerMenuScreen(lifecycle: Lifecycle) {
                     ) { Text(stringResource(R.string.back_to_menu)) }
                 }
                 Text(
-                    if (showingCheckout) stringResource(R.string.checkout)
+                    if (showingCheckout) stringResource(R.string.cart_and_orders)
                     else status?.restaurant ?: stringResource(R.string.app_name),
                     style = MaterialTheme.typography.headlineSmall,
                     modifier = Modifier.weight(1f),
@@ -358,7 +357,7 @@ private fun CustomerMenuScreen(lifecycle: Lifecycle) {
                             }
                         }
                     } else {
-                        if (cartItems.isEmpty() && receipt == null) {
+                        if (cartItems.isEmpty() && customerOrders.isEmpty()) {
                             item { Text(stringResource(R.string.empty_cart)) }
                         }
                         items(cartItems, key = { it.first.id }) { (dish, quantity) ->
@@ -403,23 +402,23 @@ private fun CustomerMenuScreen(lifecycle: Lifecycle) {
                                 }
                             }
                         }
-                        receipt?.let { orderReceipt ->
-                            item {
-                                Card(modifier = Modifier.fillMaxWidth()) {
-                                    Column(Modifier.padding(12.dp)) {
-                                        Text(
-                                            orderStatus?.statusLabel?.takeUnless { orderStatusUnavailable }
-                                                ?: stringResource(R.string.confirmation),
-                                            style = MaterialTheme.typography.titleMedium,
-                                        )
-                                        Text("${stringResource(R.string.order_number)} #${orderReceipt.id}")
-                                        Text("${orderReceipt.total} ${orderReceipt.currency}")
-                                        if (orderStatusUnavailable) {
-                                            Text(stringResource(R.string.order_status_unavailable))
-                                        }
+                        items(customerOrders, key = { "order-${it.id}" }) { order ->
+                            Card(modifier = Modifier.fillMaxWidth()) {
+                                Column(Modifier.padding(12.dp)) {
+                                    Text(
+                                        order.statusLabel?.takeUnless { orderStatusUnavailable }
+                                            ?: stringResource(R.string.confirmation),
+                                        style = MaterialTheme.typography.titleMedium,
+                                    )
+                                    Text("${stringResource(R.string.order_number)} #${order.id}")
+                                    if (order.total != null && order.currency != null) {
+                                        Text("${order.total} ${order.currency}")
                                     }
                                 }
                             }
+                        }
+                        if (orderStatusUnavailable) {
+                            item { Text(stringResource(R.string.order_status_unavailable)) }
                         }
 
                         if (cartItems.isNotEmpty()) {

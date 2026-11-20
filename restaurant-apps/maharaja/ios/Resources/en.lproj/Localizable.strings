@@ -14,6 +14,7 @@
 "customer.removeOne" = "Remove one";
 "customer.quantity" = "Quantity";
 "customer.cart" = "Cart";
+"customer.cartAndOrders" = "Cart and orders";
 "customer.emptyCart" = "Your cart is empty.";
 "customer.addToCart %@" = "Add %@ to cart";
 "customer.removeFromCart %@" = "Remove %@";

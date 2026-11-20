@@ -14,6 +14,7 @@
 "customer.removeOne" = "Fjern én";
 "customer.quantity" = "Antall";
 "customer.cart" = "Handlekurv";
+"customer.cartAndOrders" = "Handlekurv og bestillinger";
 "customer.emptyCart" = "Handlekurven er tom.";
 "customer.addToCart %@" = "Legg %@ i handlekurven";
 "customer.removeFromCart %@" = "Fjern %@";

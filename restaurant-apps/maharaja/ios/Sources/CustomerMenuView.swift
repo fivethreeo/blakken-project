@@ -8,8 +8,7 @@ private struct OrderUpdateNotification: Decodable {
 final class CustomerMenuModel: ObservableObject {
     @Published private(set) var menu: CustomerMenu?
     @Published private(set) var status: RestaurantStatus?
-    @Published private(set) var orderReceipt: OrderReceipt?
-    @Published private(set) var orderStatus: CustomerOrderStatus?
+    @Published private(set) var customerOrders: [CustomerOrderStatus] = []
     @Published private(set) var orderStatusUnavailable = false
     @Published private(set) var liveUpdatesConnected = false
     @Published private(set) var isLoading = false
@@ -34,6 +33,8 @@ final class CustomerMenuModel: ObservableObject {
     private var shopReconnectDelay: UInt64 = 1_000_000_000
     private var shopUpdatesActive = false
     private var shopStatusRequest = 0
+    private var orderStatusRequest = 0
+    private var orderPollingTask: Task<Void, Never>?
 
     var cartIsEmpty: Bool { quantities.values.allSatisfy { $0 == 0 } }
     var cartCount: Int { quantities.values.reduce(0, +) }
@@ -66,6 +67,8 @@ final class CustomerMenuModel: ObservableObject {
             errorMessage = error.localizedDescription
         }
         await connectOrderUpdates()
+        await refreshOrderStatus()
+        startOrderPolling()
     }
 
     func setQuantity(_ quantity: Int, for dishID: Int) {
@@ -74,9 +77,6 @@ final class CustomerMenuModel: ObservableObject {
         if quantities[dishID] == 0 {
             quantities.removeValue(forKey: dishID)
         }
-        orderReceipt = nil
-        orderStatus = nil
-        orderStatusUnavailable = false
     }
 
     func resumeLiveUpdates() async {
@@ -85,9 +85,12 @@ final class CustomerMenuModel: ObservableObject {
         await refreshShopStatus()
         await connectOrderUpdates()
         await refreshOrderStatus()
+        startOrderPolling()
     }
 
     func stopShopUpdates() {
+        orderPollingTask?.cancel()
+        orderPollingTask = nil
         shopUpdatesActive = false
         shopReconnectTask?.cancel()
         shopReconnectTask = nil
@@ -120,7 +123,7 @@ final class CustomerMenuModel: ObservableObject {
         errorMessage = nil
         defer { isSubmitting = false }
         do {
-            orderReceipt = try await api.placeOrder(
+            let receipt = try await api.placeOrder(
                 menuID: menu.id,
                 submissionID: submissionID,
                 customerName: cleanedName,
@@ -128,7 +131,12 @@ final class CustomerMenuModel: ObservableObject {
                 note: note.trimmingCharacters(in: .whitespacesAndNewlines),
                 items: items
             )
-            orderStatus = nil
+            orderStatusRequest += 1
+            customerOrders.removeAll { $0.id == receipt.order.id }
+            customerOrders.insert(CustomerOrderStatus(
+                id: receipt.order.id, statusLabel: nil,
+                total: receipt.order.total, currency: receipt.order.currency
+            ), at: 0)
             orderStatusUnavailable = false
             quantities = [:]
             pendingSubmissionID = nil
@@ -287,14 +295,30 @@ final class CustomerMenuModel: ObservableObject {
         }
     }
 
+    private func startOrderPolling() {
+        guard orderPollingTask == nil else { return }
+        orderPollingTask = Task { [weak self] in
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(nanoseconds: 30_000_000_000)
+                } catch {
+                    return
+                }
+                await self?.refreshOrderStatus()
+            }
+        }
+    }
+
     private func refreshOrderStatus() async {
-        guard let orderID = orderReceipt?.order.id else { return }
+        orderStatusRequest += 1
+        let request = orderStatusRequest
         do {
             let orders = try await api.loadCustomerOrders()
-            guard orderReceipt?.order.id == orderID else { return }
-            orderStatus = orders.first { $0.id == orderID }
-            orderStatusUnavailable = orderStatus == nil
+            guard !Task.isCancelled, request == orderStatusRequest else { return }
+            customerOrders = orders
+            orderStatusUnavailable = false
         } catch {
+            guard !Task.isCancelled, request == orderStatusRequest else { return }
             orderStatusUnavailable = true
         }
     }
@@ -342,7 +366,7 @@ struct CustomerMenuView: View {
                     } label: {
                         HStack {
                             Image(systemName: "cart")
-                            Text("customer.checkout")
+                            Text("customer.cartAndOrders")
                             Text("(\(model.cartCount))")
                         }
                     }
@@ -470,27 +494,27 @@ private struct CustomerCheckoutView: View {
                 }
             }
             .disabled(!model.canEditOrder)
-            if let receipt = model.orderReceipt {
+            ForEach(model.customerOrders) { order in
                 Section {
                     HStack {
                         Text("customer.orderNumber")
-                        Text("#\(receipt.order.id)")
+                        Text("#\(order.id)")
                     }
-                    Text("\(receipt.order.total) \(receipt.order.currency)")
+                    if let total = order.total, let currency = order.currency {
+                        Text("\(total) \(currency)")
+                    }
                 } header: {
-                    if let orderStatus = model.orderStatus, !model.orderStatusUnavailable {
-                        Text(orderStatus.statusLabel)
+                    if let statusLabel = order.statusLabel, !model.orderStatusUnavailable {
+                        Text(statusLabel)
                     } else {
                         Text("customer.confirmation")
                     }
                 }
+            }
+            if !model.customerOrders.isEmpty || model.orderStatusUnavailable {
                 Section("customer.orderStatus") {
-                    if let orderStatus = model.orderStatus {
-                        Text(orderStatus.statusLabel)
-                    } else if model.orderStatusUnavailable {
+                    if model.orderStatusUnavailable {
                         Text("customer.orderStatusUnavailable")
-                    } else {
-                        ProgressView()
                     }
                     Text(model.liveUpdatesConnected ? "customer.liveConnected" : "customer.liveReconnecting")
                         .font(.footnote)
@@ -526,7 +550,7 @@ private struct CustomerCheckoutView: View {
                 .disabled(!model.canEditOrder)
             }
         }
-        .navigationTitle(Text("customer.checkout"))
+        .navigationTitle(Text("customer.cartAndOrders"))
         .navigationBarBackButtonHidden(model.isSubmitting)
         .disabled(model.isSubmitting)
     }
