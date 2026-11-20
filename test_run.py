@@ -53,7 +53,7 @@ class ParallelTests(unittest.TestCase):
             self.assertEqual(launches[index].kwargs["env"]["HOST"], "127.0.0.1")
             self.assertEqual(launches[index].kwargs["env"]["PORT"], port)
         self.assertEqual(launches[4].kwargs["cwd"], run.PY_DIR)
-        self.assertEqual(launches[4].args[0][:5], [run.VENV_PYTHON, "-m", "celery", "--app=meny", "worker"])
+        self.assertEqual(launches[4].args[0][:5], [run.VENV_PYTHON, "-m", "celery", "--app=blakken", "worker"])
         self.assertIn("--pool=solo", launches[4].args[0])
         broker = launches[0].kwargs["env"]["CELERY_BROKER_URL"]
         self.assertTrue(broker.startswith("sqla+sqlite:///"))

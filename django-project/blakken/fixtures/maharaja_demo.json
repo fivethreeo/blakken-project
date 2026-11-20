@@ -1,0 +1,446 @@
+[
+  {
+    "model": "auth.user",
+    "pk": 1000001,
+    "fields": {
+      "password": "!",
+      "last_login": null,
+      "is_superuser": false,
+      "username": "maharaja-demo@example.test",
+      "first_name": "Maharaja",
+      "last_name": "Demo",
+      "email": "maharaja-demo@example.test",
+      "is_staff": false,
+      "is_active": true,
+      "date_joined": "2026-01-01T00:00:00Z",
+      "groups": [],
+      "user_permissions": []
+    }
+  },
+  {
+    "model": "blakken.restaurant",
+    "pk": 1000002,
+    "fields": {
+      "name": "Maharaja",
+      "active": true,
+      "appid": "ca7a0000-0000-4000-8000-000000000001",
+      "created_at": "2026-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "blakken.restaurantmembership",
+    "pk": 1000003,
+    "fields": {
+      "restaurant": 1000002,
+      "user": 1000001,
+      "role": "owner",
+      "created_at": "2026-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "blakken.shopstatus",
+    "pk": 1000004,
+    "fields": {
+      "restaurant": 1000002,
+      "is_open": true
+    }
+  },
+  {
+    "model": "blakken.menu",
+    "pk": 1000005,
+    "fields": {
+      "restaurant": 1000002,
+      "name": "Maharaja Menu",
+      "is_default": true,
+      "show_toc": true,
+      "max_per_page": 4,
+      "max_per_extra_page": 5,
+      "content": "",
+      "description": "A fictional menu inspired by North Indian home cooking.",
+      "cover_content": "",
+      "back_cover_title": "",
+      "back_cover_content": ""
+    }
+  },
+  {
+    "model": "blakken.menupage",
+    "pk": 1000010,
+    "fields": {
+      "menu": 1000005,
+      "position": 0,
+      "is_visible": true,
+      "name": "Starters",
+      "slug": "starters",
+      "is_continuation": false,
+      "heading": "Starters",
+      "decorative_title": "A little something to begin",
+      "descriptive_title": "",
+      "content": "",
+      "image": "",
+      "layout": "split",
+      "overlay": "black",
+      "text_shadow": false
+    }
+  },
+  {
+    "model": "blakken.menupage",
+    "pk": 1000011,
+    "fields": {
+      "menu": 1000005,
+      "position": 1,
+      "is_visible": true,
+      "name": "Tandoor",
+      "slug": "tandoor",
+      "is_continuation": false,
+      "heading": "Tandoor",
+      "decorative_title": "From the clay oven",
+      "descriptive_title": "",
+      "content": "",
+      "image": "",
+      "layout": "split",
+      "overlay": "black",
+      "text_shadow": false
+    }
+  },
+  {
+    "model": "blakken.menupage",
+    "pk": 1000012,
+    "fields": {
+      "menu": 1000005,
+      "position": 2,
+      "is_visible": true,
+      "name": "Curries",
+      "slug": "curries",
+      "is_continuation": false,
+      "heading": "Curries",
+      "decorative_title": "Slow simmered favourites",
+      "descriptive_title": "",
+      "content": "",
+      "image": "",
+      "layout": "split",
+      "overlay": "black",
+      "text_shadow": false
+    }
+  },
+  {
+    "model": "blakken.menupage",
+    "pk": 1000013,
+    "fields": {
+      "menu": 1000005,
+      "position": 3,
+      "is_visible": true,
+      "name": "Rice and Biryani",
+      "slug": "rice-and-biryani",
+      "is_continuation": false,
+      "heading": "Rice and Biryani",
+      "decorative_title": "Fragrant and comforting",
+      "descriptive_title": "",
+      "content": "",
+      "image": "",
+      "layout": "split",
+      "overlay": "black",
+      "text_shadow": false
+    }
+  },
+  {
+    "model": "blakken.menupage",
+    "pk": 1000014,
+    "fields": {
+      "menu": 1000005,
+      "position": 4,
+      "is_visible": true,
+      "name": "Vegetarian",
+      "slug": "vegetarian",
+      "is_continuation": false,
+      "heading": "Vegetarian",
+      "decorative_title": "Plant-forward plates",
+      "descriptive_title": "",
+      "content": "",
+      "image": "",
+      "layout": "split",
+      "overlay": "black",
+      "text_shadow": false
+    }
+  },
+  {
+    "model": "blakken.menupage",
+    "pk": 1000015,
+    "fields": {
+      "menu": 1000005,
+      "position": 5,
+      "is_visible": true,
+      "name": "Breads and Sides",
+      "slug": "breads-and-sides",
+      "is_continuation": false,
+      "heading": "Breads and Sides",
+      "decorative_title": "Made for sharing",
+      "descriptive_title": "",
+      "content": "",
+      "image": "",
+      "layout": "split",
+      "overlay": "black",
+      "text_shadow": false
+    }
+  },
+  {
+    "model": "blakken.menupage",
+    "pk": 1000016,
+    "fields": {
+      "menu": 1000005,
+      "position": 6,
+      "is_visible": true,
+      "name": "Desserts",
+      "slug": "desserts",
+      "is_continuation": false,
+      "heading": "Desserts",
+      "decorative_title": "A sweet finish",
+      "descriptive_title": "",
+      "content": "",
+      "image": "",
+      "layout": "split",
+      "overlay": "black",
+      "text_shadow": false
+    }
+  },
+  {
+    "model": "blakken.menupage",
+    "pk": 1000017,
+    "fields": {
+      "menu": 1000005,
+      "position": 7,
+      "is_visible": true,
+      "name": "Drinks",
+      "slug": "drinks",
+      "is_continuation": false,
+      "heading": "Drinks",
+      "decorative_title": "Something to sip",
+      "descriptive_title": "",
+      "content": "",
+      "image": "",
+      "layout": "split",
+      "overlay": "black",
+      "text_shadow": false
+    }
+  },
+  {
+    "model": "blakken.dish",
+    "pk": 1000100,
+    "fields": {
+      "menu_page": 1000010,
+      "position": 0,
+      "is_visible": true,
+      "name": "Crispy Garden Samosas",
+      "description": "Golden pastry filled with spiced potato and peas.",
+      "price": "89.00",
+      "allergens": ["gluten"]
+    }
+  },
+  {
+    "model": "blakken.dish",
+    "pk": 1000101,
+    "fields": {
+      "menu_page": 1000010,
+      "position": 1,
+      "is_visible": true,
+      "name": "Paneer Pepper Tikka",
+      "description": "Grilled paneer with peppers, yoghurt and warming spices.",
+      "price": "119.00",
+      "allergens": ["milk"]
+    }
+  },
+  {
+    "model": "blakken.dish",
+    "pk": 1000110,
+    "fields": {
+      "menu_page": 1000011,
+      "position": 0,
+      "is_visible": true,
+      "name": "Tandoori Chicken",
+      "description": "Charred chicken marinated with ginger, yoghurt and spices.",
+      "price": "249.00",
+      "allergens": ["milk"]
+    }
+  },
+  {
+    "model": "blakken.dish",
+    "pk": 1000111,
+    "fields": {
+      "menu_page": 1000011,
+      "position": 1,
+      "is_visible": true,
+      "name": "Smoky Paneer Tikka",
+      "description": "Paneer, onions and peppers roasted in the tandoor.",
+      "price": "229.00",
+      "allergens": ["milk"]
+    }
+  },
+  {
+    "model": "blakken.dish",
+    "pk": 1000120,
+    "fields": {
+      "menu_page": 1000012,
+      "position": 0,
+      "is_visible": true,
+      "name": "Mango Butter Chicken",
+      "description": "Tender chicken in a mellow tomato, butter and mango sauce.",
+      "price": "249.00",
+      "allergens": ["milk"]
+    }
+  },
+  {
+    "model": "blakken.dish",
+    "pk": 1000121,
+    "fields": {
+      "menu_page": 1000012,
+      "position": 1,
+      "is_visible": true,
+      "name": "Peppery Lamb Rogan",
+      "description": "Slow-cooked lamb with cardamom, tomato and toasted spices.",
+      "price": "269.00",
+      "allergens": []
+    }
+  },
+  {
+    "model": "blakken.dish",
+    "pk": 1000122,
+    "fields": {
+      "menu_page": 1000012,
+      "position": 2,
+      "is_visible": true,
+      "name": "Chana Masala",
+      "description": "Chickpeas simmered with tomato, ginger and coriander.",
+      "price": "219.00",
+      "allergens": []
+    }
+  },
+  {
+    "model": "blakken.dish",
+    "pk": 1000130,
+    "fields": {
+      "menu_page": 1000013,
+      "position": 0,
+      "is_visible": true,
+      "name": "Chicken Biryani",
+      "description": "Basmati rice layered with spiced chicken and fried onions.",
+      "price": "239.00",
+      "allergens": []
+    }
+  },
+  {
+    "model": "blakken.dish",
+    "pk": 1000131,
+    "fields": {
+      "menu_page": 1000013,
+      "position": 1,
+      "is_visible": true,
+      "name": "Garden Vegetable Biryani",
+      "description": "Fragrant basmati rice with seasonal vegetables and mint.",
+      "price": "219.00",
+      "allergens": []
+    }
+  },
+  {
+    "model": "blakken.dish",
+    "pk": 1000140,
+    "fields": {
+      "menu_page": 1000014,
+      "position": 0,
+      "is_visible": true,
+      "name": "Palak Paneer",
+      "description": "Paneer in a gently spiced spinach sauce.",
+      "price": "229.00",
+      "allergens": ["milk"]
+    }
+  },
+  {
+    "model": "blakken.dish",
+    "pk": 1000141,
+    "fields": {
+      "menu_page": 1000014,
+      "position": 1,
+      "is_visible": true,
+      "name": "Smoky Baingan Masala",
+      "description": "Roasted aubergine mashed with tomato, chilli and herbs.",
+      "price": "219.00",
+      "allergens": []
+    }
+  },
+  {
+    "model": "blakken.dish",
+    "pk": 1000150,
+    "fields": {
+      "menu_page": 1000015,
+      "position": 0,
+      "is_visible": true,
+      "name": "Garlic Naan",
+      "description": "Soft tandoor-baked flatbread with garlic and herbs.",
+      "price": "55.00",
+      "allergens": ["gluten", "milk"]
+    }
+  },
+  {
+    "model": "blakken.dish",
+    "pk": 1000151,
+    "fields": {
+      "menu_page": 1000015,
+      "position": 1,
+      "is_visible": true,
+      "name": "Saffron Basmati Rice",
+      "description": "Steamed basmati rice scented with saffron.",
+      "price": "49.00",
+      "allergens": []
+    }
+  },
+  {
+    "model": "blakken.dish",
+    "pk": 1000160,
+    "fields": {
+      "menu_page": 1000016,
+      "position": 0,
+      "is_visible": true,
+      "name": "Rosewater Gulab Jamun",
+      "description": "Warm milk dumplings in a light rose and cardamom syrup.",
+      "price": "89.00",
+      "allergens": ["milk", "gluten"]
+    }
+  },
+  {
+    "model": "blakken.dish",
+    "pk": 1000161,
+    "fields": {
+      "menu_page": 1000016,
+      "position": 1,
+      "is_visible": true,
+      "name": "Pistachio Kulfi",
+      "description": "Slow-churned Indian ice cream with pistachio.",
+      "price": "89.00",
+      "allergens": ["milk", "nuts"]
+    }
+  },
+  {
+    "model": "blakken.dish",
+    "pk": 1000170,
+    "fields": {
+      "menu_page": 1000017,
+      "position": 0,
+      "is_visible": true,
+      "name": "Mango Lassi",
+      "description": "Chilled yoghurt drink blended with mango.",
+      "price": "69.00",
+      "allergens": ["milk"]
+    }
+  },
+  {
+    "model": "blakken.dish",
+    "pk": 1000171,
+    "fields": {
+      "menu_page": 1000017,
+      "position": 1,
+      "is_visible": true,
+      "name": "Masala Chai",
+      "description": "Black tea simmered with milk and warming spices.",
+      "price": "49.00",
+      "allergens": ["milk"]
+    }
+  }
+]

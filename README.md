@@ -1,4 +1,4 @@
-# meny-project
+# blakken-project
 
 A starter with Django, an Rsbuild TypeScript frontend, HTTP and WebSocket
 backends, and Celery. The frontend includes only Every Layout styling and
@@ -8,6 +8,30 @@ toggle. Django serves a minimal HTML shell with an empty `#root` element.
 django-filer and easy-thumbnails remain available in Django admin. The icon
 sources, generator, and automatic icon build are retained. The editor,
 playground, Pages app, custom styles, fonts, and decorative images are removed.
+
+## Native app builds
+
+In GitHub, open **Actions**, select **Build Management iOS**, **Build Management
+Android**, **Build Maharaja iOS**, or **Build Maharaja Android**, then choose
+**Run workflow**. Download the build from the completed run's artifacts:
+iOS workflows provide unsigned device `.ipa` files for SideStore to sign during
+installation, and Android workflows provide debug APKs. Each workflow asks for
+an API base URL reachable from the device; the Maharaja workflows also ask for
+the restaurant's public app ID.
+
+## Maharaja demo data
+
+Load the fictional Maharaja restaurant into a development database with:
+
+```sh
+python3 run.py manage loaddata blakken/fixtures/maharaja_demo.json
+```
+
+The fixture creates an active restaurant, a sample menu, categories, dishes, and
+an owner account named `maharaja-demo@example.test`. The account has no usable
+password; set one with `python3 run.py manage changepassword
+maharaja-demo@example.test` before signing into a management app. Its restaurant
+app ID is `ca7a0000-0000-4000-8000-000000000001`.
 
 ## Development
 
@@ -62,7 +86,7 @@ both Django and the frontend are present; Django without frontend accepts
 `--noreload`.
 
 Changes to `assets/master_icons.svg` regenerate the hidden SVG sprite collection
-at `django-project/meny/templates/includes/icons.svg` automatically. Django
+at `django-project/blakken/templates/includes/icons.svg` automatically. Django
 includes it inline in the page; UI icons can reference symbols with
 `<svg aria-hidden="true"><use href="#icon-id"></use></svg>`.
 Run `python assets/make_svg_icon_sprites.py` to generate it manually. There is no
@@ -264,7 +288,7 @@ Apply the schema with `python run.py manage migrate` before accepting orders.
 
 ## Refreshing menu content
 
-Django renders the menu pages through `meny/templates/menu/pages.html`, shared by
+Django renders the menu pages through `blakken/templates/menu/pages.html`, shared by
 the initial page and `GET /menus/<menu_id>/pages/`. The fragment view uses the
 current session and disables caching, so future login-dependent controls can be
 rendered in that template.
@@ -288,11 +312,11 @@ Edit `typescript-frontend/src/index.html` for a page served without Django.
 Rsbuild generates `dist/index.html` and inserts the built CSS and JavaScript
 automatically; Django continues to use its own template.
 
-For frontend deployment at `/meny/` with assets at `/meny/static/`, build
+For frontend deployment at `/blakken/` with assets at `/blakken/static/`, build
 from the repository root with the matching asset prefix:
 
 ```sh
-RSBUILD_ASSET_PREFIX=/meny/static/ python3 run.py npm run build
+RSBUILD_ASSET_PREFIX=/blakken/static/ python3 run.py npm run build
 ```
 
 In the Ansible application configuration:
@@ -300,8 +324,8 @@ In the Ansible application configuration:
 ```yaml
 app_django_enabled: false
 app_frontend_enabled: true
-app_frontend_html_location: /meny/
-app_static_location: /meny/static/
+app_frontend_html_location: /blakken/
+app_static_location: /blakken/static/
 celery_enabled: false
 celery_beat_enabled: false
 ```
@@ -332,7 +356,7 @@ typescript-ws-backend/
 `/healthz`. `typescript-ws-backend` serves `/healthz` over HTTP and echoes text
 and binary WebSocket messages at `/`. Both require Node 20 or newer and read
 `HOST`, `PORT`, and `APP_NAME` from the environment. Defaults are localhost,
-ports 8001/8002, and app name `meny`.
+ports 8001/8002, and app name `blakken`.
 
 Install and build locally from the repository root:
 
@@ -344,7 +368,7 @@ python run.py npm-ws-backend run build
 ```
 
 For development, use `npm-backend run dev` or `npm-ws-backend run dev` through
-the wrapper. Append `HOST=127.0.0.1 PORT=8001 APP_NAME=meny` assignments to
+the wrapper. Append `HOST=127.0.0.1 PORT=8001 APP_NAME=blakken` assignments to
 override the environment. Each directory also has its own `.env.example`;
 after building, Node's `--env-file=.env` option can load a local file explicitly.
 Run `python run.py npm-backend test` and `python run.py npm-ws-backend test` for
@@ -429,7 +453,7 @@ credentialed CORS separately for cross-origin browser requests.
 
 ### Job records and bulk results
 
-`meny.models.Job` records a user, unique Celery task ID, and creation time.
+`blakken.models.Job` records a user, unique Celery task ID, and creation time.
 Records are not created automatically: after submitting a task, save its ID
 with `Job.objects.create(user=request.user, task_id=task.id)`. Run
 `python run.py manage migrate` to create the table.
@@ -467,7 +491,7 @@ The response is `202 {"matched_connections": ...}`, including zero when the
 user is offline. This counts matched sockets, not browser acknowledgements.
 Notifications are not persisted or deduplicated; retries can deliver duplicates.
 
-`meny.tasks.notify(result, user_id, event='task.finished')` is a Celery
+`blakken.tasks.notify(result, user_id, event='task.finished')` is a Celery
 sender task. Configure `WS_INTERNAL_URL` as the private WS HTTP base URL,
 for example `http://127.0.0.1:8002/`, and set the same
 `WS_INTERNAL_NOTIFY_TOKEN` in Django/Celery and the WS process. `parallel`
@@ -476,7 +500,7 @@ or copy a token from Django's `.env` into Node.
 
 ```python
 from celery import chain
-from meny.tasks import notify
+from blakken.tasks import notify
 
 # work is your existing Celery task; its result becomes notify's first argument.
 chain(work.s(), notify.s(request.user.pk, 'work.finished')).apply_async()
@@ -519,24 +543,24 @@ trusted proxy; secure-cookie settings can be enabled independently for HTTPS.
 Memcached is optional. Set `DJANGO_MEMCACHED_LOCATION=127.0.0.1:11211` to use
 Django's `PyMemcacheCache` backend, with one-second connection/read timeouts.
 Leave it empty to retain Django's local-memory cache. Set
-`DJANGO_CACHE_KEY_PREFIX` to a distinct deployment name, such as `meny` or
-`meny_staging`, when sharing a cache server. Code accesses it through
+`DJANGO_CACHE_KEY_PREFIX` to a distinct deployment name, such as `blakken` or
+`blakken_staging`, when sharing a cache server. Code accesses it through
 `django.core.cache.cache`; this does not automatically cache views or sessions.
 Keep Memcached private and treat its data as disposable, not persistent storage.
 
-Celery uses `meny` as its app and autodiscovers `tasks.py` in installed
+Celery uses `blakken` as its app and autodiscovers `tasks.py` in installed
 Django apps. Configure `CELERY_BROKER_URL` with your RabbitMQ user/vhost and,
 if needed, `CELERY_RESULT_BACKEND`:
 
 ```sh
 cd django-project
-DJANGO_ENV_FILE=/path/to/runtime.env .venv/bin/celery -A meny worker --loglevel=INFO
-DJANGO_ENV_FILE=/path/to/runtime.env .venv/bin/celery -A meny beat --loglevel=INFO \
+DJANGO_ENV_FILE=/path/to/runtime.env .venv/bin/celery -A blakken worker --loglevel=INFO
+DJANGO_ENV_FILE=/path/to/runtime.env .venv/bin/celery -A blakken beat --loglevel=INFO \
   --schedule=/path/to/persistent/celerybeat-schedule
 ```
 
 Run only one Beat instance per application schedule. For production, use
-Gunicorn (`meny.wsgi:application`) and systemd rather than development
+Gunicorn (`blakken.wsgi:application`) and systemd rather than development
 servers.
 
 Build the frontend on your workstation before deployment. The matching
@@ -544,3 +568,21 @@ Build the frontend on your workstation before deployment. The matching
 source and prebuilt frontend output, writes Vault-backed settings, runs
 PostgreSQL migrations and `collectstatic`, and manages Gunicorn/Celery.
 It does not run the frontend build on the deployment host.
+
+The production deployment uses a separate `blakken.yml` and encrypted
+`blakken-secrets.yml` in `~/.config/home-cluster/`; keep both outside Git. Build
+the frontend and enabled TypeScript services locally, then run
+the deployment from this checkout:
+
+```sh
+python3 run.py npm ci
+python3 run.py npm run build
+python3 run.py npm-backend ci
+python3 run.py npm-backend run build
+python3 run.py npm-ws-backend ci
+python3 run.py npm-ws-backend run build
+ansible-playbook -i ../ansible-home-cluster/provision-hosts/inventory.yml \
+  ../ansible-home-cluster/deploy-app/deploy-code.yml --limit sugar \
+  -e @"$HOME/.config/home-cluster/blakken.yml" \
+  -e @"$HOME/.config/home-cluster/blakken-secrets.yml" --ask-vault-pass
+```

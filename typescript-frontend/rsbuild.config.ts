@@ -59,6 +59,7 @@ export default defineConfig(({ env }) => {
   source: {
     entry: {
       index: './src/index.ts',
+      business: './src/business.ts',
     },
   },
   tools: {
@@ -67,7 +68,7 @@ export default defineConfig(({ env }) => {
     },
     rspack: {
       output: {
-        uniqueName: 'meny_app',
+        uniqueName: 'blakken_app',
         ...(isDevelopment ? { chunkFilename: 'js/[name].js' } : {}),
       },
       optimization: {

@@ -71,7 +71,7 @@ async function notify(
   reply(202, { matched_connections: matched });
 }
 
-export function createBackend(appName = 'meny', options: BackendOptions = {}) {
+export function createBackend(appName = 'blakken', options: BackendOptions = {}) {
   const auth = {
     djangoUrl: options.djangoUrl ?? process.env.DJANGO_INTERNAL_URL,
     serviceToken: options.serviceToken ?? process.env.DJANGO_INTERNAL_AUTH_TOKEN,
@@ -119,7 +119,8 @@ export function createBackend(appName = 'meny', options: BackendOptions = {}) {
         + 'Connection: close\r\nCache-Control: no-store\r\nContent-Length: 0\r\n\r\n',
       );
     };
-    const path = new URL(request.url ?? '/', 'http://localhost').pathname;
+    const url = new URL(request.url ?? '/', 'http://localhost');
+    const path = url.pathname;
     if (path !== '/' && path !== '/orders/' && path !== '/shop/') {
       reject(404);
       return;
@@ -128,7 +129,12 @@ export function createBackend(appName = 'meny', options: BackendOptions = {}) {
       reject(403);
       return;
     }
-    const userId = path === '/shop/' ? 'public:shop' : await authenticate(request, {
+    const appid = url.searchParams.get('appid');
+    if (path === '/shop/' && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(appid ?? '')) {
+      reject(400);
+      return;
+    }
+    const userId = path === '/shop/' ? `public:shop:${appid}` : await authenticate(request, {
       ...auth, authPath: path === '/orders/' ? 'internal/order-auth/' : 'internal/auth/',
     });
     if (socket.destroyed || !socket.writable) return;

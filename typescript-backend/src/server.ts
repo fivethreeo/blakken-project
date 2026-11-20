@@ -5,7 +5,7 @@ export interface SessionRequest extends IncomingMessage {
   userId?: string | number | null;
 }
 
-export function createBackend(appName = 'meny', authOptions: AuthOptions = {}) {
+export function createBackend(appName = 'blakken', authOptions: AuthOptions = {}) {
   const auth = {
     djangoUrl: authOptions.djangoUrl ?? process.env.DJANGO_INTERNAL_URL,
     serviceToken: authOptions.serviceToken ?? process.env.DJANGO_INTERNAL_AUTH_TOKEN,

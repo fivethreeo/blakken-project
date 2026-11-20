@@ -1,0 +1,85 @@
+name: Build Maharaja iOS
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_base_url:
+        description: HTTPS API base URL reachable from the iPhone
+        required: true
+        type: string
+      restaurant_app_id:
+        description: Maharaja restaurant app ID
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: restaurant-apps/maharaja/ios
+        run: xcodegen generate --spec project.yml
+
+      - name: Build iOS device app
+        working-directory: restaurant-apps/maharaja/ios
+        env:
+          API_BASE_URL: ${{ inputs.api_base_url }}
+          RESTAURANT_APP_ID: ${{ inputs.restaurant_app_id }}
+        run: >-
+          xcodebuild
+          -project Maharaja.xcodeproj
+          -scheme Maharaja
+          -destination 'generic/platform=iOS'
+          -sdk iphoneos
+          -configuration Release
+          -derivedDataPath build
+          CODE_SIGNING_ALLOWED=NO
+          "INFOPLIST_KEY_API_BASE_URL=$API_BASE_URL"
+          "INFOPLIST_KEY_RESTAURANT_APP_ID=$RESTAURANT_APP_ID"
+          build
+
+      - name: Configure API base URL and restaurant app ID
+        working-directory: restaurant-apps/maharaja/ios
+        env:
+          API_BASE_URL: ${{ inputs.api_base_url }}
+          RESTAURANT_APP_ID: ${{ inputs.restaurant_app_id }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import plistlib
+          from pathlib import Path
+
+          info_path = Path("build/Build/Products/Release-iphoneos/Maharaja.app/Info.plist")
+          with info_path.open("rb") as info_file:
+              info = plistlib.load(info_file)
+          info["API_BASE_URL"] = os.environ["API_BASE_URL"]
+          info["RESTAURANT_APP_ID"] = os.environ["RESTAURANT_APP_ID"]
+          with info_path.open("wb") as info_file:
+              plistlib.dump(info, info_file)
+          with info_path.open("rb") as info_file:
+              configured = plistlib.load(info_file)
+          assert configured["API_BASE_URL"] == os.environ["API_BASE_URL"]
+          assert configured["RESTAURANT_APP_ID"] == os.environ["RESTAURANT_APP_ID"]
+          PY
+
+      - name: Package unsigned IPA for SideStore
+        working-directory: restaurant-apps/maharaja/ios
+        run: |
+          mkdir -p build/ipa/Payload
+          ditto build/Build/Products/Release-iphoneos/Maharaja.app build/ipa/Payload/Maharaja.app
+          cd build/ipa
+          zip -qry "$GITHUB_WORKSPACE/restaurant-apps/maharaja/ios/Maharaja.ipa" Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: maharaja-ios-sidestore-ipa
+          path: restaurant-apps/maharaja/ios/Maharaja.ipa
+          if-no-files-found: error

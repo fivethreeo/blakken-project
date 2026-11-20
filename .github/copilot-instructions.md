@@ -1,4 +1,4 @@
-# Meny repository instructions
+# Blakken repository instructions
 
 ## Setup and commands
 
@@ -13,14 +13,14 @@
 
 ## Architecture
 
-- Django (`django-project/meny`) owns HTTP routing, the admin, configuration, database access, and the HTML shell. The root `index` view renders `templates/index.html`; menu articles live in the shared `templates/menu/pages.html` fragment, also served by `menu_pages` at `/menus/<menu_id>/pages/`. The frontend entry is `typescript-frontend/src/index.ts`; it initializes Every Layout and the menu reader. `window.menuReader.refresh()` fetches the fragment, replaces article content without replacing the article nodes, and awaits Turnpage's `rerenderAll()`. Page structure changes require a reload.
+- Django (`django-project/blakken`) owns HTTP routing, the admin, configuration, database access, and the HTML shell. The root `index` view renders `templates/index.html`; menu articles live in the shared `templates/menu/pages.html` fragment, also served by `menu_pages` at `/menus/<menu_id>/pages/`. The frontend entry is `typescript-frontend/src/index.ts`; it initializes Every Layout and the menu reader. `window.menuReader.refresh()` fetches the fragment, replaces article content without replacing the article nodes, and awaits Turnpage's `rerenderAll()`. Page structure changes require a reload.
 - Rsbuild produces the browser assets and `typescript-frontend/dist/manifest.json`. The `{% rsbuild_entry 'index' %}` tag in the Django template reads that manifest and emits its CSS and deferred JavaScript URLs. New frontend entry points must be represented both in Rsbuild’s manifest and in the consuming Django template tag.
 - In development, Rsbuild writes the manifest to disk and Django loads its URLs from `RSBUILD_BASE_URL` (normally `http://localhost:3000`). Therefore start the frontend server or build the frontend before rendering Django pages; otherwise the template tag raises a clear manifest error.
 - In production, run the frontend build before Django static-file collection. `STATICFILES_DIRS` includes the frontend `dist` directory, `collectstatic` copies the manifest/assets to `STATIC_ROOT`, and production configuration reads the manifest from there.
 
 ## Repository conventions
 
-- Runtime configuration is environment-based in `meny/local_settings.py`. Use the `DJANGO_*` variables for debug mode, secret key, hosts, database, static root, and CORS settings rather than editing committed settings for deployments. A non-debug process requires `DJANGO_SECRET_KEY`.
+- Runtime configuration is environment-based in `blakken/local_settings.py`. Use the `DJANGO_*` variables for debug mode, secret key, hosts, database, static root, and CORS settings rather than editing committed settings for deployments. A non-debug process requires `DJANGO_SECRET_KEY`.
 - Development CORS is disabled by default. Django does not load `django-cors-headers` unless `DJANGO_CORS_ALLOWED_ORIGINS` is set; enable Rsbuild asset CORS with `RSBUILD_CORS_ORIGIN`. Set either or both explicitly as needed. `PUBLIC_HOST` drives `RSBUILD_BASE_URL` and the HMR WebSocket host.
 - TypeScript uses native ESM/bundler resolution and treats unused locals and parameters as errors. Keep frontend source under `typescript-frontend/src`; the generated `dist` contents are build output.
 

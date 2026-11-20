@@ -21,10 +21,49 @@ interface OrderPage {
   count: number;
 }
 
+const language = document.documentElement.lang.startsWith('en') ? 'en' : 'nb';
+const locale = language === 'nb' ? 'nb-NO' : 'en-GB';
+const messages = {
+  nb: {
+    preparing: 'Start tilberedning', ready: 'Merk som klar', completed: 'Fullfør', cancelled: 'Avbryt',
+    open: 'Åpent for bestillinger', closed: 'Stengt for bestillinger',
+    closeShop: 'Steng butikken', openShop: 'Åpne butikken',
+    shopConflict: 'Butikkstatusen ble endret av noen andre. Kontroller statusen og prøv igjen.',
+    shopUpdateFailed: 'Kunne ikke endre butikkstatus. Kontroller statusen og prøv igjen.',
+    shopUpdateFailedShort: 'Kunne ikke endre butikkstatus.',
+    accessEnded: 'Tilgangen er avsluttet. Logg inn på nytt.',
+    ordersAuth: 'Du må være logget inn som ansatt for å se bestillinger.',
+    ordersFetch: 'Kunne ikke hente bestillinger.',
+    ordersRetry: 'Kunne ikke hente bestillinger. Prøver igjen automatisk.',
+    page: 'Side {page} av {pages} · {count} bestillinger',
+    cancelConfirm: 'Vil du avbryte bestilling #{id}? Dette kan ikke angres.',
+    orderConflict: 'Bestillingen ble endret av noen andre. Listen oppdateres.',
+    orderUpdateFailed: 'Kunne ikke endre status. Listen oppdateres; kontroller statusen og prøv igjen.',
+    orderUpdateFailedShort: 'Kunne ikke endre status.',
+  },
+  en: {
+    preparing: 'Start preparing', ready: 'Mark ready', completed: 'Complete', cancelled: 'Cancel',
+    open: 'Open for orders', closed: 'Closed for orders',
+    closeShop: 'Close ordering', openShop: 'Open ordering',
+    shopConflict: 'Someone else changed the shop status. Check the status and try again.',
+    shopUpdateFailed: 'Could not change the shop status. Check the status and try again.',
+    shopUpdateFailedShort: 'Could not change the shop status.',
+    accessEnded: 'Access has ended. Sign in again.',
+    ordersAuth: 'You must be signed in as staff to view orders.',
+    ordersFetch: 'Could not load orders.',
+    ordersRetry: 'Could not load orders. Retrying automatically.',
+    page: 'Page {page} of {pages} · {count} orders',
+    cancelConfirm: 'Cancel order #{id}? This cannot be undone.',
+    orderConflict: 'Someone else changed this order. The list is refreshing.',
+    orderUpdateFailed: 'Could not update the status. The list is refreshing; check the status and try again.',
+    orderUpdateFailedShort: 'Could not update the status.',
+  },
+} as const;
+const t = (key: keyof typeof messages.en) => messages[language][key];
 const labels: Record<string, string> = {
-  preparing: 'Start tilberedning', ready: 'Merk som klar', completed: 'Fullfør', cancelled: 'Kanseller',
+  preparing: t('preparing'), ready: t('ready'), completed: t('completed'), cancelled: t('cancelled'),
 };
-const money = (value: string) => new Intl.NumberFormat('nb-NO', {
+const money = (value: string) => new Intl.NumberFormat(locale, {
   style: 'currency', currency: 'NOK',
 }).format(Number(value));
 
@@ -48,15 +87,25 @@ export function initOrders(root: HTMLElement) {
   let retry: ReturnType<typeof setTimeout> | undefined;
   let retryDelay = 1000;
   const shopToggle = root.querySelector<HTMLButtonElement>('[data-shop-toggle]')!;
+  const restaurantFilter = root.querySelector<HTMLSelectElement>('[data-restaurant-filter]');
+  restaurantFilter?.addEventListener('change', () => {
+    const url = new URL(location.href);
+    if (restaurantFilter.value === 'all') url.searchParams.set('appid', 'all');
+    else url.searchParams.set('appid', restaurantFilter.value);
+    location.assign(url);
+  });
   let shopOpen = true;
   let changingShop = false;
   function renderShop(status: ShopState) {
     shopOpen = status.is_open;
-    root.querySelector('[data-shop-status]')!.textContent = shopOpen ? 'Åpent for bestillinger' : 'Stengt for bestillinger';
-    shopToggle.textContent = shopOpen ? 'Steng butikken' : 'Åpne butikken';
+    root.querySelector('[data-shop-status]')!.textContent = shopOpen ? t('open') : t('closed');
+    shopToggle.textContent = shopOpen ? t('closeShop') : t('openShop');
     shopToggle.disabled = changingShop || stopped;
   }
-  const shop = initShopStatus(root, renderShop);
+  const shop = root.dataset.shopUrl
+    ? initShopStatus(root, renderShop)
+    : { refresh: async () => {} };
+  if (!root.dataset.shopUrl) shopToggle.hidden = true;
 
   shopToggle.addEventListener('click', () => {
     if (changingShop || stopped) return;
@@ -75,11 +124,11 @@ export function initOrders(root: HTMLElement) {
         });
         if (response.status === 401 || response.status === 403) denied();
         if (!response.ok) throw new Error(response.status === 409
-          ? 'Butikkstatus er endret av noen andre. Kontroller status og prøv igjen.'
-          : 'Kunne ikke endre butikkstatus. Kontroller status og prøv igjen.');
+          ? t('shopConflict')
+          : t('shopUpdateFailed'));
         renderShop(await response.json());
       } catch (reason) {
-        error.textContent = reason instanceof Error ? reason.message : 'Kunne ikke endre butikkstatus.';
+        error.textContent = reason instanceof Error ? reason.message : t('shopUpdateFailedShort');
         error.hidden = false;
       } finally {
         changingShop = false;
@@ -96,7 +145,7 @@ export function initOrders(root: HTMLElement) {
     clearTimeout(retry);
     socket?.close();
     list.replaceChildren();
-    connection.textContent = 'Tilgangen er avsluttet. Logg inn på nytt.';
+    connection.textContent = t('accessEnded');
   }
 
   async function refresh() {
@@ -106,32 +155,38 @@ export function initOrders(root: HTMLElement) {
     const url = new URL(root.dataset.ordersUrl!, location.href);
     url.searchParams.set('page', String(currentPage));
     url.searchParams.set('status', filter.value);
+    if (root.dataset.restaurantAppid) {
+      url.searchParams.set('appid', root.dataset.restaurantAppid);
+    }
     try {
       const response = await fetch(url, {
         credentials: 'same-origin', cache: 'no-store', signal: AbortSignal.timeout(15000),
       });
       if (response.status === 401 || response.status === 403) {
         denied();
-        throw new Error('Du må være logget inn som ansatt for å se bestillinger.');
+        throw new Error(t('ordersAuth'));
       }
       if (response.status === 400 && currentPage > 1) {
         if (version !== request) return;
         currentPage = 1;
         return refresh();
       }
-      if (!response.ok) throw new Error('Kunne ikke hente bestillinger.');
+      if (!response.ok) throw new Error(t('ordersFetch'));
       const data: OrderPage = await response.json();
       if (version !== request || stopped) return;
       list.replaceChildren(...data.results.map(card));
       root.querySelector<HTMLElement>('[data-orders-empty]')!.hidden = data.results.length > 0;
-      root.querySelector('[data-orders-page]')!.textContent = `Side ${data.page} av ${data.pages} · ${data.count} bestillinger`;
+      root.querySelector('[data-orders-page]')!.textContent = t('page')
+        .replace('{page}', String(data.page))
+        .replace('{pages}', String(data.pages))
+        .replace('{count}', String(data.count));
       previous.disabled = data.page <= 1;
       next.disabled = data.page >= data.pages;
       error.hidden = true;
     } catch (reason) {
       if (version !== request) return;
       error.textContent = reason instanceof Error && reason.name === 'Error'
-        ? reason.message : 'Kunne ikke hente bestillinger. Prøver igjen automatisk.';
+        ? reason.message : t('ordersRetry');
       error.hidden = false;
     }
   }
@@ -143,7 +198,7 @@ export function initOrders(root: HTMLElement) {
     element.querySelector('[data-order-status]')!.textContent = order.status_label;
     const time = element.querySelector<HTMLTimeElement>('[data-order-created]')!;
     time.dateTime = order.created_at;
-    time.textContent = new Date(order.created_at).toLocaleString('nb-NO');
+    time.textContent = new Date(order.created_at).toLocaleString(locale);
     element.querySelector('[data-order-customer]')!.textContent = order.customer_name;
     element.querySelector('[data-order-phone]')!.textContent = order.phone;
     const note = element.querySelector<HTMLElement>('[data-order-note]')!;
@@ -165,7 +220,7 @@ export function initOrders(root: HTMLElement) {
           if (updating || stopped || cancelDialog.open) return;
           cancellation = { order, element };
           cancelDialog.querySelector('[data-order-cancel-message]')!.textContent =
-            `Vil du kansellere bestilling #${order.id}? Dette kan ikke angres.`;
+            t('cancelConfirm').replace('{id}', String(order.id));
           readingPosition = { x: window.scrollX, y: window.scrollY };
           cancelDialog.showModal();
           cancelDialog.scrollTop = 0;
@@ -199,10 +254,10 @@ export function initOrders(root: HTMLElement) {
       });
       if (response.status === 401 || response.status === 403) denied();
       if (!response.ok) throw new Error(response.status === 409
-        ? 'Bestillingen er endret av noen andre. Listen oppdateres.'
-        : 'Kunne ikke endre status. Listen oppdateres; kontroller status og prøv igjen.');
+        ? t('orderConflict')
+        : t('orderUpdateFailed'));
     } catch (reason) {
-      error.textContent = reason instanceof Error ? reason.message : 'Kunne ikke endre status.';
+      error.textContent = reason instanceof Error ? reason.message : t('orderUpdateFailedShort');
       error.hidden = false;
     } finally {
       updating = false;

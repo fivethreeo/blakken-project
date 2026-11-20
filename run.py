@@ -210,7 +210,7 @@ def run_parallel(args, envs):
         )
     processes = []
     reload_directory = (
-        tempfile.TemporaryDirectory(prefix="meny-django-reload-")
+        tempfile.TemporaryDirectory(prefix="blakken-django-reload-")
         if django_enabled and frontend_enabled and not IS_WINDOWS else None
     )
     reload_trigger = Path(reload_directory.name) / "frontend-reload" if reload_directory else None
@@ -269,7 +269,7 @@ def run_parallel(args, envs):
         if django_enabled:
             start_process(
                 [
-                    VENV_PYTHON, "-m", "celery", "--app=meny", "worker",
+                    VENV_PYTHON, "-m", "celery", "--app=blakken", "worker",
                     "--loglevel=INFO", "--pool=solo", "--concurrency=1",
                     "--without-gossip", "--without-mingle", "--without-heartbeat",
                 ],

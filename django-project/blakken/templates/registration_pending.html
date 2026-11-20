@@ -1,0 +1,12 @@
+{% extends "business_base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Registration received | Blakken" %}{% endblock %}
+{% block content %}
+<main id="main" class="business-shell center stack">
+  <section class="signup-panel box stack" role="status">
+    <h1>{% trans "Registration received" %}</h1>
+    <p>{% blocktrans with restaurant=restaurant.name %}We received the registration for {{ restaurant }}. Your restaurant is inactive until our team approves it.{% endblocktrans %}</p>
+    <a class="action-link" href="{% url 'index' %}">{% trans "Return to Blakken" %}</a>
+  </section>
+</main>
+{% endblock %}

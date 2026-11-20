@@ -1,0 +1,145 @@
+@use './everylayout.scss';
+
+:root {
+  --ink: #203b33;
+  --muted: #52635a;
+  --paper: #faf8f0;
+  --canvas: #e7ece5;
+  --accent: #205846;
+  --forest: #163f34;
+  --rule: #cdd7cb;
+  --color-dark: var(--ink);
+  --color-light: var(--canvas);
+  color: var(--ink);
+  background: var(--canvas);
+  font-family: system-ui, sans-serif;
+}
+
+body {
+  min-block-size: 100svh;
+  line-height: 1.6;
+}
+
+html:has(dialog[open]) {
+  overflow: hidden;
+}
+
+.menu-shell {
+  --measure: 80rem;
+  --padding: clamp(0.75rem, 2vw, 1.5rem);
+  --space: 1rem;
+  min-block-size: 100svh;
+  padding-block: 1rem;
+}
+
+.menu-heading {
+  --space: 0.25rem;
+  max-inline-size: 52rem;
+  padding-inline-start: 1rem;
+  border-inline-start: 4px solid var(--accent);
+  overflow-wrap: anywhere;
+}
+
+.menu-heading h1 {
+  max-inline-size: none;
+  margin: 0;
+  font-size: clamp(1.75rem, 4vw, 2rem);
+  letter-spacing: -0.035em;
+  line-height: 1.15;
+}
+
+.menu-heading > p,
+.render-error {
+  color: var(--muted);
+}
+
+.reader-controls {
+  --gap: 0.5rem;
+
+  button,
+  select {
+    min-block-size: 2.5rem;
+    padding: 0.4rem 0.7rem;
+    border: 1px solid var(--accent);
+    border-radius: 0.2rem;
+    color: var(--accent);
+    background: var(--paper);
+    font: inherit;
+  }
+
+  button:hover:not(:disabled) {
+    color: var(--paper);
+    background: var(--accent);
+  }
+
+  button:disabled {
+    border-color: var(--rule);
+    opacity: 0.55;
+  }
+
+  button:focus-visible,
+  select:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+
+.orders-grid {
+  --min: 23rem;
+  --gap: 0.75rem;
+  align-items: start;
+  padding-block-start: 0.5rem;
+}
+
+.order-card {
+  --color-light: var(--paper);
+  --padding: 0.85rem;
+  --space: 0.35rem;
+  --gap: 0.5rem;
+  border: 1px solid var(--rule);
+  border-radius: 0.2rem;
+  overflow-wrap: anywhere;
+
+  h2 {
+    margin: 0;
+    font-size: 1.5rem;
+  }
+
+  .reader-controls {
+    justify-content: flex-start;
+  }
+
+  .order-items {
+    --space: 0.1rem;
+  }
+}
+
+.order-note {
+  white-space: pre-wrap;
+}
+
+.menu-editor {
+  --position: fixed;
+  --margin: 1rem;
+  --padding: clamp(1rem, 3vw, 1.5rem);
+  --color-light: var(--paper);
+  --color-dark: var(--ink);
+  inline-size: min(34rem, calc(100vw - 2rem));
+  overflow-wrap: anywhere;
+  margin: 0;
+  border: 1px solid var(--rule);
+  border-radius: 0.2rem;
+  box-shadow: 0 1rem 3rem rgb(28 54 42 / 25%);
+
+  &::backdrop {
+    background: rgb(22 63 52 / 55%);
+  }
+}
+
+.render-error:not([hidden]) {
+  color: #962e24;
+}
+
+.orders-login {
+  --measure: 24rem;
+}

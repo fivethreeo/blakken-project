@@ -13,7 +13,7 @@ async function listen(t, server) {
 }
 
 async function backend(t, options) {
-  const { server, sockets } = createBackend('meny_staging', options);
+  const { server, sockets } = createBackend('blakken_staging', options);
   t.after(async () => {
     for (const socket of sockets.clients) socket.terminate();
     await new Promise((resolve) => sockets.close(resolve));
@@ -35,7 +35,7 @@ test('serves health and echoes text/binary frames over WebSockets', async (t) =>
   });
   const health = await fetch(`http://${address}/healthz`);
   assert.deepEqual(await health.json(), {
-    app: 'meny_staging', service: 'typescript-ws-backend', status: 'ok',
+    app: 'blakken_staging', service: 'typescript-ws-backend', status: 'ok',
   });
   assert.equal(calls.length, 0);
   assert.equal((await fetch(`http://${address}/`)).status, 426);
@@ -190,7 +190,7 @@ test('customer order sockets use private session channels and never receive anot
   const django = await listen(t, createServer((request, response) => {
     calls.push({ path: request.url, cookie: request.headers.cookie, token: request.headers.authorization });
     const cookie = request.headers.cookie;
-    if (request.url === '/django/internal/order-auth/' && ['meny_sessionid=guest-a', 'meny_sessionid=guest-b'].includes(cookie)) {
+    if (request.url === '/django/internal/order-auth/' && ['blakken_sessionid=guest-a', 'blakken_sessionid=guest-b'].includes(cookie)) {
       response.end(JSON.stringify({ user_id: `orders:${cookie.split('=')[1]}` }));
     } else {
       response.writeHead(401);
@@ -200,7 +200,7 @@ test('customer order sockets use private session channels and never receive anot
   const { address, sockets } = await backend(t, {
     djangoUrl: `http://${django}/django/`,
     serviceToken: 'test-only-service-token',
-    sessionCookieName: 'meny_sessionid',
+    sessionCookieName: 'blakken_sessionid',
     notifyToken: 'test-only-notify-token',
     allowedOrigins: ['https://app.example'],
   });
@@ -213,7 +213,7 @@ test('customer order sockets use private session channels and never receive anot
     const accepted = once(sockets, 'connection');
     const client = new WebSocket(`ws://${address}${path}`, {
       origin: 'https://app.example',
-      headers: { Cookie: `sessionid=unrelated; meny_sessionid=${cookie}` },
+      headers: { Cookie: `sessionid=unrelated; blakken_sessionid=${cookie}` },
     });
     await once(client, 'open');
     assert.equal((await accepted)[0].userId, identity);
@@ -223,7 +223,7 @@ test('customer order sockets use private session channels and never receive anot
     '/django/internal/order-auth/', '/django/internal/order-auth/', '/django/internal/auth/',
   ]);
   assert.ok(calls.every(call => call.token === 'Bearer test-only-service-token'));
-  assert.ok(calls.every(call => call.cookie.startsWith('meny_sessionid=')));
+  assert.ok(calls.every(call => call.cookie.startsWith('blakken_sessionid=')));
   const received = clients.map(() => []);
   clients.forEach((client, index) => client.on('message', data => received[index].push(JSON.parse(data.toString()))));
   for (const [target, expected] of [['orders:guest-a', 1], ['orders:guest-b', 1], [42, 0]]) {
@@ -245,7 +245,7 @@ test('customer order sockets use private session channels and never receive anot
   for (const cookie of [undefined, 'expired']) {
     const client = new WebSocket(`ws://${address}/orders/`, {
       origin: 'https://app.example',
-      headers: cookie ? { Cookie: `meny_sessionid=${cookie}` } : {},
+      headers: cookie ? { Cookie: `blakken_sessionid=${cookie}` } : {},
     });
     client.on('error', () => {});
     const [, response] = await once(client, 'unexpected-response');
@@ -268,9 +268,15 @@ test('public shop channel skips session auth and never receives private order no
     allowedOrigins: ['https://app.example'],
   });
   const clients = [];
+  const appid = '20000000-0000-4000-8000-000000000001';
+  const otherAppid = '20000000-0000-4000-8000-000000000002';
+  const shopUrl = `/shop/?appid=${appid}`;
+  const shopUserId = `public:shop:${appid}`;
+  const otherShopUserId = `public:shop:${otherAppid}`;
   for (const [path, cookie, identity] of [
-    ['/shop/', undefined, 'public:shop'],
-    ['/shop/', 'private-session', 'public:shop'],
+    [shopUrl, undefined, shopUserId],
+    [shopUrl, 'private-session', shopUserId],
+    [`/shop/?appid=${otherAppid}`, undefined, otherShopUserId],
     ['/', 'staff-session', 42],
   ]) {
     const accepted = once(sockets, 'connection');
@@ -288,16 +294,16 @@ test('public shop channel skips session auth and never receives private order no
   const url = `http://${address}/internal/notify/`;
   const headers = { Authorization: 'Bearer test-only-notify-token', 'Content-Type': 'application/json' };
   assert.equal((await fetch(url, {
-    method: 'POST', body: JSON.stringify({ user_id: 'public:shop', event: 'shop.changed', result: {} }),
+    method: 'POST', body: JSON.stringify({ user_id: shopUserId, event: 'shop.changed', result: {} }),
   })).status, 403);
   const shopEvents = clients.slice(0, 2).map(client => once(client, 'message'));
   const result = await fetch(url, {
     method: 'POST', headers,
-    body: JSON.stringify({ user_id: 'public:shop', event: 'shop.changed', result: {} }),
+    body: JSON.stringify({ user_id: shopUserId, event: 'shop.changed', result: {} }),
   });
   assert.deepEqual(await result.json(), { matched_connections: 2 });
   await Promise.all(shopEvents);
-  const staffEvent = once(clients[2], 'message');
+  const staffEvent = once(clients[3], 'message');
   await fetch(url, {
     method: 'POST', headers,
     body: JSON.stringify({ user_id: 42, event: 'orders.changed', result: { order_id: 7 } }),
@@ -310,7 +316,8 @@ test('public shop channel skips session auth and never receives private order no
   }
   assert.deepEqual(received[0], [{ event: 'shop.changed', result: {} }, { barrier: true }]);
   assert.deepEqual(received[1], [{ event: 'shop.changed', result: {} }, { barrier: true }]);
-  assert.deepEqual(received[2], [{ event: 'orders.changed', result: { order_id: 7 } }, { barrier: true }]);
+  assert.deepEqual(received[2], [{ barrier: true }]);
+  assert.deepEqual(received[3], [{ event: 'orders.changed', result: { order_id: 7 } }, { barrier: true }]);
 });
 
 test('internal notifications require service authentication, valid payloads, and bounded bodies', async (t) => {
@@ -414,17 +421,17 @@ test('uses only the configured Django cookie when apps share an origin', async (
   }));
   const { address, sockets } = await backend(t, {
     djangoUrl: `http://${django}/`, serviceToken: 'test-only-service-token',
-    sessionCookieName: 'meny_sessionid', allowedOrigins: ['https://app.example'],
+    sessionCookieName: 'blakken_sessionid', allowedOrigins: ['https://app.example'],
   });
   const connection = once(sockets, 'connection');
   const socket = new WebSocket(`ws://${address}/`, {
     origin: 'https://app.example',
-    headers: { Cookie: 'sessionid=prosango; meny_sessionid=template' },
+    headers: { Cookie: 'sessionid=prosango; blakken_sessionid=template' },
   });
   await once(socket, 'open');
   const [accepted] = await connection;
   assert.equal(accepted.userId, 42);
-  assert.deepEqual(cookies, ['meny_sessionid=template']);
+  assert.deepEqual(cookies, ['blakken_sessionid=template']);
   socket.close();
   await once(socket, 'close');
 });

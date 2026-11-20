@@ -219,7 +219,7 @@ def _flatten_svg(source_tree, output_svg, guide_ids):
 
     output_path = Path(output_svg)
     with tempfile.TemporaryDirectory(
-        prefix=".meny-icon-flatten-", dir=output_path.parent
+        prefix=".blakken-icon-flatten-", dir=output_path.parent
     ) as temp_dir:
         temp_dir = Path(temp_dir)
         artwork_path = temp_dir / "artwork.svg"
@@ -429,7 +429,7 @@ def _compile_icons(input_svg, squares_layer_id, require_all_guides=True):
     empty_guides = []
 
     with tempfile.TemporaryDirectory(
-        prefix=".meny-icon-sprite-", dir=source_path.parent
+        prefix=".blakken-icon-sprite-", dir=source_path.parent
     ) as temp_dir:
         flattened_path = Path(temp_dir) / "flattened.svg"
         _flatten_svg(
@@ -528,7 +528,7 @@ def main():
     args = parser.parse_args()
 
     output_path = args.output or (
-        project_dir / "django-project/meny/templates/includes/icons.svg"
+        project_dir / "django-project/blakken/templates/includes/icons.svg"
     )
     compile_precise_spritesheet_by_layer_input(
         args.input,

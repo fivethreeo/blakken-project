@@ -1,0 +1,475 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Blakken\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-11-19 17:07+0000\n"
+"PO-Revision-Date: 2026-11-19 17:00+0000\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: blakken/api.py:26 blakken/orders.py:183 blakken/views.py:103
+#: blakken/views.py:215 blakken/views.py:258
+msgid "Expected application/json."
+msgstr "Expected application/json."
+
+#: blakken/api.py:28 blakken/orders.py:185
+msgid "Payload too large."
+msgstr "Payload too large."
+
+#: blakken/api.py:34 blakken/orders.py:191 blakken/views.py:107
+#: blakken/views.py:219 blakken/views.py:262
+msgid "Invalid JSON."
+msgstr "Invalid JSON."
+
+#: blakken/api.py:60 blakken/api.py:272 blakken/orders.py:79
+#: blakken/orders.py:206 blakken/views.py:110 blakken/views.py:221
+#: blakken/views.py:265
+msgid "Invalid fields."
+msgstr "Invalid fields."
+
+#: blakken/api.py:85 blakken/api.py:89
+msgid "Invalid credentials."
+msgstr "Invalid credentials."
+
+#: blakken/api.py:103 blakken/api.py:107 blakken/api.py:118 blakken/api.py:122
+msgid "Invalid refresh token."
+msgstr "Invalid refresh token."
+
+#: blakken/api.py:136 blakken/api.py:220 blakken/orders.py:67
+#: blakken/orders.py:112 blakken/orders.py:177 blakken/views.py:43
+#: blakken/views.py:393 blakken/views.py:402
+msgid "Authentication required."
+msgstr "Authentication required."
+
+#: blakken/api.py:142 blakken/orders.py:72
+msgid "You do not have access to this restaurant."
+msgstr "You do not have access to this restaurant."
+
+#: blakken/api.py:275
+msgid "Menu name is too long."
+msgstr "Menu name is too long."
+
+msgid "Category not found."
+msgstr "Category not found."
+
+#: blakken/api.py:311 blakken/api.py:369 blakken/orders.py:351
+#: blakken/orders.py:375
+msgid "Invalid status."
+msgstr "Invalid status."
+
+#: blakken/api.py:317 blakken/orders.py:357 blakken/views.py:112
+#: blakken/views.py:408
+msgid "Invalid page."
+msgstr "Invalid page."
+
+#: blakken/api.py:377 blakken/api.py:382 blakken/orders.py:381
+#: blakken/orders.py:386
+msgid "The order changed. Refresh and try again."
+msgstr "The order changed. Refresh and try again."
+
+#: blakken/forms.py:12 blakken/models.py:56
+msgid "Restaurant name"
+msgstr "Restaurant name"
+
+#: blakken/forms.py:13
+msgid "Email address"
+msgstr "Email address"
+
+#: blakken/forms.py:14 blakken/templates/orders_login.html:23
+msgid "Password"
+msgstr "Password"
+
+#: blakken/forms.py:16
+msgid "Confirm password"
+msgstr "Confirm password"
+
+#: blakken/forms.py:23 blakken/forms.py:25
+msgid "An account already uses this email address."
+msgstr "An account already uses this email address."
+
+#: blakken/forms.py:33
+msgid "The passwords do not match."
+msgstr "The passwords do not match."
+
+#: blakken/models.py:57 blakken/templates/orders.html:32
+msgid "Active"
+msgstr "Active"
+
+#: blakken/models.py:58
+msgid "App ID"
+msgstr "App ID"
+
+#: blakken/models.py:59
+msgid "Created at"
+msgstr "Created at"
+
+#: blakken/models.py:70
+msgid "Owner"
+msgstr "Owner"
+
+#: blakken/models.py:71
+msgid "Manager"
+msgstr "Manager"
+
+#: blakken/models.py:118
+msgid "Default menu"
+msgstr "Default menu"
+
+#: blakken/models.py:283
+msgid "New"
+msgstr "New"
+
+#: blakken/models.py:284
+msgid "Preparing"
+msgstr "Preparing"
+
+#: blakken/models.py:285
+msgid "Ready"
+msgstr "Ready"
+
+#: blakken/models.py:286
+msgid "Completed"
+msgstr "Completed"
+
+#: blakken/models.py:287
+msgid "Cancelled"
+msgstr "Cancelled"
+
+#: blakken/orders.py:47
+msgid "We are open for orders."
+msgstr "We are open for orders."
+
+#: blakken/orders.py:49
+msgid "We are closed for orders."
+msgstr "We are closed for orders."
+
+#: blakken/orders.py:64
+msgid "Restaurant app ID is required."
+msgstr "Restaurant app ID is required."
+
+#: blakken/orders.py:83
+msgid "Shop status changed."
+msgstr "Shop status changed."
+
+#: blakken/orders.py:106 blakken/orders.py:305
+msgid "Only staff can access orders."
+msgstr "Only staff can access orders."
+
+#: blakken/orders.py:114
+msgid "You do not have permission to manage orders."
+msgstr "You do not have permission to manage orders."
+
+#: blakken/orders.py:170 blakken/views.py:384
+msgid "Unavailable."
+msgstr "Unavailable."
+
+#: blakken/orders.py:174 blakken/views.py:390
+msgid "Forbidden."
+msgstr "Forbidden."
+
+#: blakken/orders.py:212
+msgid "Invalid submission ID."
+msgstr "Invalid submission ID."
+
+#: blakken/orders.py:217
+msgid "Please check this field."
+msgstr "Please check this field."
+
+#: blakken/orders.py:224
+msgid "Enter a valid phone number."
+msgstr "Enter a valid phone number."
+
+#: blakken/orders.py:227
+msgid "Choose between 1 and 50 different dishes."
+msgstr "Choose between 1 and 50 different dishes."
+
+#: blakken/orders.py:237
+msgid "Check the dishes and quantities (1–99)."
+msgstr "Check the dishes and quantities (1–99)."
+
+#: blakken/orders.py:256 blakken/orders.py:289
+msgid "Submission ID already used for another order."
+msgstr "Submission ID already used for another order."
+
+#: blakken/orders.py:260
+msgid "Menu not found."
+msgstr "Menu not found."
+
+#: blakken/orders.py:262
+msgid "Restaurant not found."
+msgstr "Restaurant not found."
+
+#: blakken/orders.py:274
+msgid "A dish is no longer available. Reload the menu and try again."
+msgstr "A dish is no longer available. Reload the menu and try again."
+
+#: blakken/settings.py:117
+msgid "Norwegian Bokmål"
+msgstr "Norwegian Bokmål"
+
+#: blakken/settings.py:118
+msgid "English"
+msgstr "English"
+
+#: blakken/templates/business.html:3
+msgid "Restaurant ordering, made simple | Blakken"
+msgstr "Restaurant ordering, made simple | Blakken"
+
+#: blakken/templates/business.html:7
+msgid "A better way to serve your guests"
+msgstr "A better way to serve your guests"
+
+#: blakken/templates/business.html:8
+msgid "Your restaurant. Your menu. Your app."
+msgstr "Your restaurant. Your menu. Your app."
+
+#: blakken/templates/business.html:9
+msgid ""
+"Blakken gives restaurants their own customer app and a shared management app "
+"for menus and orders."
+msgstr "Blakken gives restaurants their own customer app and a shared management app for menus and orders."
+
+#: blakken/templates/business.html:10 blakken/templates/business_base.html:15
+#: blakken/templates/signup.html:7
+msgid "Register your restaurant"
+msgstr "Register your restaurant"
+
+#: blakken/templates/business.html:14
+msgid "Your own customer app"
+msgstr "Your own customer app"
+
+#: blakken/templates/business.html:15
+msgid ""
+"Give guests a dedicated app for your restaurant, with your menus and "
+"ordering."
+msgstr "Give guests a dedicated app for your restaurant, with your menus and ordering."
+
+#: blakken/templates/business.html:18
+msgid "One place to manage"
+msgstr "One place to manage"
+
+#: blakken/templates/business.html:19
+msgid "Use the shared management app to keep menus and orders up to date."
+msgstr "Use the shared management app to keep menus and orders up to date."
+
+#: blakken/templates/business.html:22
+msgid "You stay in control"
+msgstr "You stay in control"
+
+#: blakken/templates/business.html:23
+msgid ""
+"Create an account to request access. Our team activates each restaurant "
+"before it goes live."
+msgstr "Create an account to request access. Our team activates each restaurant before it goes live."
+
+#: blakken/templates/business.html:28
+msgid "Blakken — tools for independent restaurants."
+msgstr "Blakken — tools for independent restaurants."
+
+#: blakken/templates/business_base.html:7
+msgid "Blakken for restaurants"
+msgstr "Blakken for restaurants"
+
+#: blakken/templates/business_base.html:11
+msgid "Skip to content"
+msgstr "Skip to content"
+
+#: blakken/templates/business_base.html:14
+msgid "Main navigation"
+msgstr "Main navigation"
+
+#: blakken/templates/orders.html:6 blakken/templates/orders.html:17
+msgid "Orders"
+msgstr "Orders"
+
+#: blakken/templates/orders.html:18
+msgid "Connecting…"
+msgstr "Connecting…"
+
+#: blakken/templates/orders.html:20
+msgid "Order options"
+msgstr "Order options"
+
+#: blakken/templates/orders.html:21 blakken/templates/orders_login.html:29
+msgid "Back to Blakken"
+msgstr "Back to Blakken"
+
+#: blakken/templates/orders.html:22
+msgid "Restaurant"
+msgstr "Restaurant"
+
+#: blakken/templates/orders.html:24
+msgid "All restaurants"
+msgstr "All restaurants"
+
+#: blakken/templates/orders.html:30
+msgid "Show"
+msgstr "Show"
+
+#: blakken/templates/orders.html:33
+msgid "All"
+msgstr "All"
+
+#: blakken/templates/orders.html:37
+msgid "Refresh"
+msgstr "Refresh"
+
+#: blakken/templates/orders.html:39
+msgid "Shop status…"
+msgstr "Shop status…"
+
+#: blakken/templates/orders.html:42
+msgid "Log out"
+msgstr "Log out"
+
+#: blakken/templates/orders.html:46
+msgid "Enable JavaScript to view and manage orders."
+msgstr "Enable JavaScript to view and manage orders."
+
+#: blakken/templates/orders.html:48
+msgid "No orders."
+msgstr "No orders."
+
+#: blakken/templates/orders.html:50
+msgid "Order pages"
+msgstr "Order pages"
+
+#: blakken/templates/orders.html:51
+msgid "Previous"
+msgstr "Previous"
+
+#: blakken/templates/orders.html:52
+msgid "Page 1"
+msgstr "Page 1"
+
+#: blakken/templates/orders.html:53
+msgid "Next"
+msgstr "Next"
+
+#: blakken/templates/orders.html:58
+msgid "Cancel order?"
+msgstr "Cancel order?"
+
+#: blakken/templates/orders.html:61
+msgid "Keep order"
+msgstr "Keep order"
+
+#: blakken/templates/orders.html:62
+msgid "Cancel order"
+msgstr "Cancel order"
+
+#: blakken/templates/orders.html:80
+msgid "Total:"
+msgstr "Total:"
+
+#: blakken/templates/orders_login.html:6
+msgid "Sign in · Orders"
+msgstr "Sign in · Orders"
+
+#: blakken/templates/orders_login.html:12
+#: blakken/templates/orders_login.html:28
+msgid "Sign in"
+msgstr "Sign in"
+
+#: blakken/templates/orders_login.html:13
+msgid "Orders · staff only"
+msgstr "Orders · staff only"
+
+#: blakken/templates/orders_login.html:19
+msgid "Username"
+msgstr "Username"
+
+#: blakken/templates/registration_pending.html:3
+msgid "Registration received | Blakken"
+msgstr "Registration received | Blakken"
+
+#: blakken/templates/registration_pending.html:7
+msgid "Registration received"
+msgstr "Registration received"
+
+#: blakken/templates/registration_pending.html:8
+#, python-format
+msgid ""
+"We received the registration for %(restaurant)s. Your restaurant is inactive "
+"until our team approves it."
+msgstr "We received the registration for %(restaurant)s. Your restaurant is inactive until our team approves it."
+
+#: blakken/templates/registration_pending.html:9
+msgid "Return to Blakken"
+msgstr "Return to Blakken"
+
+#: blakken/templates/signup.html:3
+msgid "Register your restaurant | Blakken"
+msgstr "Register your restaurant | Blakken"
+
+#: blakken/templates/signup.html:8
+msgid ""
+"Create an account to request a Blakken restaurant profile. Your restaurant "
+"will remain inactive until our team approves it."
+msgstr "Create an account to request a Blakken restaurant profile. Your restaurant will remain inactive until our team approves it."
+
+#: blakken/templates/signup.html:19
+msgid "Create account"
+msgstr "Create account"
+
+#: blakken/views.py:50
+msgid "You do not have access to this menu."
+msgstr "You do not have access to this menu."
+
+#: blakken/views.py:122
+msgid "A page cannot be inserted after this cover."
+msgstr "A page cannot be inserted after this cover."
+
+#: blakken/views.py:130 blakken/views.py:276
+msgid "Enter text."
+msgstr "Enter text."
+
+#: blakken/views.py:156 blakken/views.py:357
+msgid "Invalid direction."
+msgstr "Invalid direction."
+
+#: blakken/views.py:193
+msgid "A cover page cannot be deleted."
+msgstr "A cover page cannot be deleted."
+
+#: blakken/views.py:230
+msgid "A cover page cannot be hidden."
+msgstr "A cover page cannot be hidden."
+
+#: blakken/views.py:269
+msgid "Choose whether the dish should be visible to customers."
+msgstr "Choose whether the dish should be visible to customers."
+
+#: blakken/views.py:292
+msgid "Enter a valid price of zero or more."
+msgstr "Enter a valid price of zero or more."
+
+#: blakken/views.py:299
+msgid "Select valid allergens."
+msgstr "Select valid allergens."
+
+#: blakken/views.py:410
+msgid "Page not found."
+msgstr "Page not found."
+
+#: blakken/views.py:414
+msgid "Task result storage is not configured."
+msgstr "Task result storage is not configured."
+
+#: blakken/views.py:421
+msgid "Unable to retrieve task results."
+msgstr "Unable to retrieve task results."
+
+#: blakken/views.py:439
+msgid "Unable to encode task results."
+msgstr "Unable to encode task results."

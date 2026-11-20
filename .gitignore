@@ -6,6 +6,8 @@ __pycache__/
 .Python
 build/
 dist/
+.gradle/
+*.mo
 downloads/
 eggs/
 .eggs/

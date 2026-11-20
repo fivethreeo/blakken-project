@@ -30,12 +30,14 @@ export function initShopStatus(root: HTMLElement, onChange: (status: ShopState) 
 
   function connect() {
     const base = document.body.dataset.tsWsBackendUrl;
-    if (stopped || !base || socket) return;
+    const appid = root.dataset.restaurantAppid;
+    if (stopped || !base || !appid || socket) return;
     try {
       const url = new URL(base.endsWith('/') ? base : `${base}/`, location.href);
       if (url.protocol === 'https:') url.protocol = 'wss:';
       else if (url.protocol === 'http:') url.protocol = 'ws:';
       url.pathname += 'shop/';
+      url.searchParams.set('appid', appid);
       const client = new WebSocket(url);
       socket = client;
       client.addEventListener('open', () => {
