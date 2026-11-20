@@ -158,6 +158,13 @@ private fun ManagementScreen() {
             } else {
                 delay(retryDelay)
                 retryDelay = (retryDelay * 2).coerceAtMost(30_000L)
+                try {
+                    if (selected?.appid == restaurant.appid) refreshOrders()
+                } catch (failure: CancellationException) {
+                    throw failure
+                } catch (failure: Exception) {
+                    error = failure.localizedMessage ?: context.getString(R.string.request_failed)
+                }
             }
         }
     }
