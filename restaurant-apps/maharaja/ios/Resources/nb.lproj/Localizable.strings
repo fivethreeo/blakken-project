@@ -17,7 +17,7 @@
 "customer.emptyCart" = "Handlekurven er tom.";
 "customer.addToCart %@" = "Legg %@ i handlekurven";
 "customer.removeFromCart %@" = "Fjern %@";
-"customer.confirmation" = "Bestillingen er bekreftet";
+"customer.confirmation" = "Bestillingskvittering";
 "customer.orderNumber" = "Bestilling";
 "customer.orderStatus" = "Bestillingsstatus";
 "customer.orderStatusUnavailable" = "Bestillingsstatusen er ikke tilgjengelig akkurat nå.";

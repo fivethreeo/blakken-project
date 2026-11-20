@@ -17,7 +17,7 @@
 "customer.emptyCart" = "Your cart is empty.";
 "customer.addToCart %@" = "Add %@ to cart";
 "customer.removeFromCart %@" = "Remove %@";
-"customer.confirmation" = "Order confirmed";
+"customer.confirmation" = "Order receipt";
 "customer.orderNumber" = "Order";
 "customer.orderStatus" = "Order status";
 "customer.orderStatusUnavailable" = "The order status is unavailable right now.";
