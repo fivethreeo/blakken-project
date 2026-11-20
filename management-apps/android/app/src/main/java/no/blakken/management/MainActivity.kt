@@ -41,23 +41,30 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { ManagementScreen() }
+        setContent { ManagementScreen(lifecycle) }
     }
 }
 
 @Composable
-private fun ManagementScreen() {
+private fun ManagementScreen(lifecycle: Lifecycle) {
     val context = LocalContext.current
     val api = remember(context) { ManagementApi(context) }
     val scope = rememberCoroutineScope()
+    val orderRefreshMutex = remember { Mutex() }
     var email by remember { mutableStateOf("maharaja-demo@example.test") }
     var password by remember { mutableStateOf("") }
     var accessToken by remember { mutableStateOf<String?>(null) }
@@ -109,11 +116,16 @@ private fun ManagementScreen() {
 
     suspend fun loadRestaurant(restaurant: Restaurant, token: String) {
         val loadedMenus = api.menus(restaurant.appid, token)
-        val loadedOrders = api.orders(restaurant.appid, token)
         val loadedShopStatus = api.shopStatus(restaurant.appid, token)
-        menus = loadedMenus
-        orders = loadedOrders
-        shopStatus = loadedShopStatus
+        orderRefreshMutex.withLock {
+            val loadedOrders = api.orders(restaurant.appid, token)
+            currentCoroutineContext().ensureActive()
+            if (selected?.appid == restaurant.appid) {
+                menus = loadedMenus
+                orders = loadedOrders
+                shopStatus = loadedShopStatus
+            }
+        }
     }
 
     suspend fun refreshRestaurant() {
@@ -135,35 +147,49 @@ private fun ManagementScreen() {
         }
     }
 
-    suspend fun refreshOrders() {
-        val restaurant = selected ?: return
-        orders = authenticated { token -> api.orders(restaurant.appid, token) }
+    suspend fun refreshOrders(restaurant: Restaurant) {
+        orderRefreshMutex.withLock {
+            if (selected?.appid != restaurant.appid || accessToken == null) return@withLock
+            val loadedOrders = authenticated { token -> api.orders(restaurant.appid, token) }
+            currentCoroutineContext().ensureActive()
+            if (selected?.appid == restaurant.appid) orders = loadedOrders
+        }
     }
 
-    LaunchedEffect(selected?.appid, accessToken) {
+    LaunchedEffect(selected?.appid, accessToken, lifecycle) {
         val restaurant = selected ?: return@LaunchedEffect
-        var retryDelay = 1_000L
-        while (isActive) {
-            val token = accessToken ?: break
-            val receivedUpdate = api.waitForOrderUpdate(token)
-            if (receivedUpdate) {
-                retryDelay = 1_000L
-                try {
-                    if (selected?.appid == restaurant.appid) refreshOrders()
-                } catch (failure: CancellationException) {
-                    throw failure
-                } catch (failure: Exception) {
-                    error = failure.localizedMessage ?: context.getString(R.string.request_failed)
+        val token = accessToken ?: return@LaunchedEffect
+        suspend fun updateOrders() {
+            try {
+                refreshOrders(restaurant)
+            } catch (failure: CancellationException) {
+                throw failure
+            } catch (_: Exception) {
+                // Preserve displayed orders until a reconnect or polling refresh succeeds.
+            }
+        }
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            launch {
+                while (isActive) {
+                    updateOrders()
+                    delay(30_000)
                 }
-            } else {
-                delay(retryDelay)
-                retryDelay = (retryDelay * 2).coerceAtMost(30_000L)
-                try {
-                    if (selected?.appid == restaurant.appid) refreshOrders()
-                } catch (failure: CancellationException) {
-                    throw failure
-                } catch (failure: Exception) {
-                    error = failure.localizedMessage ?: context.getString(R.string.request_failed)
+            }
+            launch {
+                var retryDelay = 1_000L
+                while (isActive) {
+                    try {
+                        api.orderUpdates(token).collect {
+                            retryDelay = 1_000L
+                            updateOrders()
+                        }
+                    } catch (failure: CancellationException) {
+                        throw failure
+                    } catch (_: Exception) {
+                        // Refresh on reconnect and poll while live updates are unavailable.
+                    }
+                    delay(retryDelay)
+                    retryDelay = (retryDelay * 2).coerceAtMost(30_000L)
                 }
             }
         }
@@ -473,8 +499,8 @@ private fun ManagementScreen() {
                                     launchAction {
                                         authenticated { token ->
                                             api.updateOrder(restaurant.appid, order, status, token)
-                                            orders = api.orders(restaurant.appid, token)
                                         }
+                                        refreshOrders(restaurant)
                                     }
                                 },
                             )

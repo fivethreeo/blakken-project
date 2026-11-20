@@ -8,7 +8,10 @@ import com.google.android.play.core.integrity.StandardIntegrityManager.StandardI
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -27,8 +30,6 @@ import java.net.URL
 import java.security.MessageDigest
 import java.util.Locale
 import java.util.UUID
-import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.coroutines.resume
 
 data class Restaurant(val name: String, val appid: String, val active: Boolean, val role: String)
 data class MenuItem(val id: Int, val name: String, val isDefault: Boolean)
@@ -323,7 +324,7 @@ class ManagementApi(private val context: Context) {
         )
     }
 
-    suspend fun waitForOrderUpdate(token: String): Boolean = suspendCancellableCoroutine { continuation ->
+    fun orderUpdates(token: String): Flow<Unit> = callbackFlow {
         val apiUri = URI(BuildConfig.API_BASE_URL)
         val originPort = if (apiUri.port == -1) "" else ":${apiUri.port}"
         val origin = "${apiUri.scheme}://${apiUri.host}$originPort"
@@ -332,18 +333,15 @@ class ManagementApi(private val context: Context) {
             .header("Authorization", "Bearer $token")
             .header("Origin", origin)
             .build()
-        val completed = AtomicBoolean(false)
-        fun finish(receivedUpdate: Boolean) {
-            if (completed.compareAndSet(false, true) && continuation.isActive) {
-                continuation.resume(receivedUpdate)
-            }
-        }
         val socket = websocketClient.newWebSocket(request, object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: Response) {
+                trySend(Unit)
+            }
+
             override fun onMessage(webSocket: WebSocket, text: String) {
                 val event = runCatching { JSONObject(text).optString("event") }.getOrNull()
                 if (event == "orders.changed") {
-                    webSocket.close(1000, "Order update received")
-                    finish(true)
+                    trySend(Unit)
                 }
             }
 
@@ -352,15 +350,15 @@ class ManagementApi(private val context: Context) {
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                finish(false)
+                close()
             }
 
             override fun onFailure(webSocket: WebSocket, throwable: Throwable, response: Response?) {
-                finish(false)
+                close(throwable)
             }
         })
-        continuation.invokeOnCancellation { socket.cancel() }
-    }
+        awaitClose { socket.cancel() }
+    }.conflate()
 
     suspend fun shopStatus(appid: String, token: String): ShopStatus =
         request("api/v1/management/restaurants/$appid/shop/", token = token)

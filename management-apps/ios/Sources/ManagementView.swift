@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ManagementView: View {
     @StateObject private var model = ManagementModel()
+    @Environment(\.scenePhase) private var scenePhase
     @State private var email = "maharaja-demo@example.test"
     @State private var password = ""
     @State private var newMenuName = ""
@@ -39,6 +40,17 @@ struct ManagementView: View {
                 Text(model.errorMessage ?? "")
             }
         }
+        .onAppear {
+            if scenePhase == .active { model.resumeOrderUpdates() }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                model.resumeOrderUpdates()
+            } else {
+                model.pauseOrderUpdates()
+            }
+        }
+        .onDisappear { model.pauseOrderUpdates() }
     }
 
     private var signIn: some View {
