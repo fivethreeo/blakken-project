@@ -39,6 +39,7 @@ jobs:
           -configuration Release
           -derivedDataPath build
           CODE_SIGNING_ALLOWED=NO
+          "CURRENT_PROJECT_VERSION=${{ github.run_number }}.${{ github.run_attempt }}"
           INFOPLIST_KEY_APP_ATTEST_REQUIRED=NO
           INFOPLIST_KEY_APP_REGISTRATION_ID=""
           build

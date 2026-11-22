@@ -19,6 +19,30 @@ installation, and Android workflows provide debug APKs. Each workflow asks for
 an API base URL reachable from the device; the Maharaja workflows also ask for
 the restaurant's public app ID.
 
+### Publish iOS apps to SideStore
+
+After both **Build Maharaja iOS** and **Build Management iOS** have completed
+successfully from the same commit on `main`, publish their run IDs locally:
+
+```sh
+python3 scripts/publish_sidestore_source.py \
+  --maharaja-run <maharaja-run-id> \
+  --management-run <management-run-id>
+```
+
+The command downloads both IPA artifacts with `gh`, checks their bundle IDs and
+production configuration, and saves the IPAs, icons, and generated source in
+`dist/sidestore/`. It then uploads versioned IPAs and icons before atomically
+publishing `source.json` under `/static/source/`. SSH must be configured for
+`sugar@192.168.1.100` and permit non-interactive `sudo install`/`mv`; use
+`--host` and `--ssh-key` to override the defaults. Pass `--dry-run` to prepare
+and inspect the local files without uploading them.
+
+Add `https://blakken.cavabonga.no/static/source/source.json` to SideStore once.
+Subsequent successful publications appear as updates after SideStore refreshes;
+the user still confirms installation. iOS build numbers are derived from the
+GitHub Actions run and attempt so each publication is distinguishable.
+
 ### Native app verification (required by default)
 
 Customer and management apps support **Apple App Attest** on iOS and **Google
