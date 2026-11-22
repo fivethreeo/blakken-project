@@ -40,11 +40,13 @@ struct MenuEditorView: View {
                             CategoryEditorView(model: model, menu: menu, categoryID: category.id)
                         } label: {
                             HStack {
-                                VStack(alignment: .leading) {
+                                HStack(spacing: 4) {
                                     Text(category.name)
                                     if !category.isVisible {
-                                        Text("management.categoryHidden")
+                                        Image(systemName: "eye.slash")
+                                            .font(.subheadline)
                                             .foregroundStyle(.secondary)
+                                            .accessibilityLabel(Text("management.categoryHidden"))
                                     }
                                 }
                                 Spacer()
@@ -171,7 +173,15 @@ private struct CategoryEditorView: View {
                             )
                         } label: {
                             VStack(alignment: .leading) {
-                                Text(dish.name)
+                                HStack(spacing: 4) {
+                                    Text(dish.name)
+                                    if !dish.isVisible {
+                                        Image(systemName: "eye.slash")
+                                            .font(.subheadline)
+                                            .foregroundStyle(.secondary)
+                                            .accessibilityLabel(Text("management.dishHidden"))
+                                    }
+                                }
                                 if let price = dish.price {
                                     Text("\(price) \(String(localized: "management.currency"))")
                                         .font(.subheadline)

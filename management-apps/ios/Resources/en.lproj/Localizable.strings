@@ -55,6 +55,7 @@
 "management.dishName" = "Dish name";
 "management.dishDescription" = "Description";
 "management.dishPrice" = "Price (NOK)";
+"management.dishHidden" = "Hidden from customers";
 "management.dishVisible" = "Visible to customers";
 "management.saveDish" = "Save dish";
 "management.deleteDish" = "Delete dish";

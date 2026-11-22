@@ -55,6 +55,7 @@
 "management.dishName" = "Navn på rett";
 "management.dishDescription" = "Beskrivelse";
 "management.dishPrice" = "Pris (NOK)";
+"management.dishHidden" = "Skjult for kunder";
 "management.dishVisible" = "Synlig for kunder";
 "management.saveDish" = "Lagre rett";
 "management.deleteDish" = "Slett rett";
