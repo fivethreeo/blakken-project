@@ -35,6 +35,9 @@
     <string name="new_menu_name">New menu name</string>
     <string name="create_menu">Create menu</string>
     <string name="edit_menu">Edit menu</string>
+    <string name="delete_menu">Delete menu</string>
+    <string name="delete_menu_confirmation">Delete this menu and all of its categories and dishes?</string>
+    <string name="swipe_menu_hint">Swipe left on a menu to delete it.</string>
     <string name="back">Back</string>
     <string name="back_to_categories">Back to categories</string>
     <string name="cancel">Cancel</string>

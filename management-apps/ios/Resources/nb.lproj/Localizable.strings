@@ -35,6 +35,9 @@
 "management.newMenuName" = "Navn på ny meny";
 "management.createMenu" = "Opprett meny";
 "management.editMenu" = "Rediger menyinnhold";
+"management.deleteMenu" = "Slett meny";
+"management.deleteMenuConfirmation" = "Vil du slette denne menyen og alle kategorier og retter?";
+"management.swipeMenuHint" = "Sveip til venstre på en meny for å slette den.";
 "management.categories" = "Kategorier";
 "management.swipeActionsHint" = "Sveip til venstre på en kategori eller rett for å vise handlinger.";
 "management.hide" = "Skjul";

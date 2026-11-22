@@ -394,6 +394,15 @@ struct ManagementAPI {
         )
     }
 
+    func deleteMenu(for appid: String, menuID: Int, token: String) async throws {
+        let _: EmptyResponse = try await request(
+            "api/v1/management/restaurants/\(appid)/menus/\(menuID)/",
+            method: "DELETE",
+            body: Optional<EmptyBody>.none,
+            token: token
+        )
+    }
+
     func menuContent(for appid: String, menuID: Int, token: String) async throws -> ManagementMenuContent {
         try await request(
             "api/v1/management/restaurants/\(appid)/menus/\(menuID)/content/",
@@ -681,6 +690,15 @@ final class ManagementModel: ObservableObject {
         guard let restaurant = selectedRestaurant else { return }
         await performAuthenticated { token in
             try await api.createMenu(for: restaurant.appid, name: name, token: token)
+            try await loadRestaurant(restaurant, token: token)
+        }
+    }
+
+    func deleteMenu(menuID: Int) async {
+        guard let restaurant = selectedRestaurant else { return }
+        await performAuthenticated { token in
+            try await api.deleteMenu(for: restaurant.appid, menuID: menuID, token: token)
+            menuContent = nil
             try await loadRestaurant(restaurant, token: token)
         }
     }

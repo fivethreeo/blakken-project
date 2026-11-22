@@ -28,6 +28,7 @@ from .play_integrity_views import (
 from .management_attest_views import management_attested_auth
 from .api import (
     create_management_category, create_management_dish, create_management_menu,
+    delete_management_menu,
     customer_session, logout_tokens, management_category, management_dish,
     management_menu_content, management_menus, management_order_status, management_shop_status,
     management_orders, management_restaurants, obtain_tokens, public_default_menu,
@@ -79,6 +80,7 @@ urlpatterns = [
     path('api/v1/management/restaurants/<uuid:appid>/orders/<int:order_id>/status/', management_order_status, name='management-order-status'),
     path('api/v1/management/restaurants/<uuid:appid>/menus/', management_menus, name='management-menus'),
     path('api/v1/management/restaurants/<uuid:appid>/menus/create/', create_management_menu, name='management-menu-create'),
+    path('api/v1/management/restaurants/<uuid:appid>/menus/<int:menu_id>/', delete_management_menu, name='management-menu'),
     path('api/v1/management/restaurants/<uuid:appid>/menus/<int:menu_id>/content/', management_menu_content, name='management-menu-content'),
     path('api/v1/management/restaurants/<uuid:appid>/menus/<int:menu_id>/categories/', create_management_category, name='management-category-create'),
     path('api/v1/management/restaurants/<uuid:appid>/menus/<int:menu_id>/categories/<int:category_id>/', management_category, name='management-category'),

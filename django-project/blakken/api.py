@@ -381,6 +381,22 @@ def create_management_menu(request, appid):
 
 @never_cache
 @csrf_exempt
+@require_http_methods(['DELETE'])
+def delete_management_menu(request, appid, menu_id):
+    access, error = _management_access(request, appid)
+    if error:
+        return error
+    _user, restaurant = access
+    with transaction.atomic():
+        menu = get_object_or_404(
+            Menu.objects.select_for_update(), restaurant=restaurant, pk=menu_id,
+        )
+        menu.delete()
+    return JsonResponse({'deleted': True})
+
+
+@never_cache
+@csrf_exempt
 @require_POST
 def create_management_category(request, appid, menu_id):
     access, error = _management_access(request, appid)

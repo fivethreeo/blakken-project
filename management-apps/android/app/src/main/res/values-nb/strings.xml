@@ -35,6 +35,9 @@
     <string name="new_menu_name">Navn på ny meny</string>
     <string name="create_menu">Opprett meny</string>
     <string name="edit_menu">Rediger meny</string>
+    <string name="delete_menu">Slett meny</string>
+    <string name="delete_menu_confirmation">Vil du slette denne menyen og alle kategorier og retter?</string>
+    <string name="swipe_menu_hint">Sveip til venstre på en meny for å slette den.</string>
     <string name="back">Tilbake</string>
     <string name="back_to_categories">Tilbake til kategoriene</string>
     <string name="cancel">Avbryt</string>

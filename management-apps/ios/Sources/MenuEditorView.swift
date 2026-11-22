@@ -3,9 +3,11 @@ import SwiftUI
 struct MenuEditorView: View {
     @ObservedObject var model: ManagementModel
     let menu: ManagementMenu
+    @Environment(\.dismiss) private var dismiss
     @State private var categoryName = ""
     @State private var categoryToDeleteID: Int?
     @State private var isConfirmingCategoryDelete = false
+    @State private var isConfirmingMenuDelete = false
 
     var body: some View {
         List {
@@ -83,6 +85,13 @@ struct MenuEditorView: View {
                     }
                 }
             }
+
+            Section {
+                Button("management.deleteMenu", role: .destructive) {
+                    isConfirmingMenuDelete = true
+                }
+                .disabled(model.isLoading)
+            }
         }
         .navigationTitle(menu.name)
         .task { await model.loadMenuContent(menuID: menu.id) }
@@ -97,6 +106,20 @@ struct MenuEditorView: View {
                 Task {
                     await model.deleteCategory(menuID: menu.id, categoryID: categoryToDeleteID)
                     self.categoryToDeleteID = nil
+                }
+            }
+        }
+        .confirmationDialog(
+            "management.deleteMenuConfirmation",
+            isPresented: $isConfirmingMenuDelete,
+            titleVisibility: .visible
+        ) {
+            Button("management.deleteMenu", role: .destructive) {
+                Task {
+                    await model.deleteMenu(menuID: menu.id)
+                    if model.errorMessage == nil {
+                        dismiss()
+                    }
                 }
             }
         }

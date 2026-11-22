@@ -157,6 +157,12 @@ class TenantApiTests(TestCase):
         self.assertEqual(self.client.get(menus_url, **headers).json()['results'][0]['id'], self.menu.pk)
         other_tokens = self.token('other@example.com', 'Tenant-test-password-2!')
         self.assertEqual(self.client.get(menus_url, **self.auth(other_tokens)).status_code, 403)
+        menu_url = reverse(
+            'management-menu',
+            kwargs={'appid': self.restaurant.appid, 'menu_id': self.menu.pk},
+        )
+        self.assertEqual(self.client.delete(menu_url).status_code, 401)
+        self.assertEqual(self.client.delete(menu_url, **self.auth(other_tokens)).status_code, 403)
 
         order_payload = {
             'submission_id': str(uuid4()), 'customer_name': 'Guest', 'phone': '12345678',
@@ -225,14 +231,25 @@ class TenantApiTests(TestCase):
                 'category_id': category.json()['id'],
             },
         )
-        self.assertEqual(client.post(
+        dish = client.post(
             dish_url, {'name': 'Curry', 'price': '125.00'},
             content_type='application/json', **headers,
-        ).status_code, 201)
+        )
+        self.assertEqual(dish.status_code, 201)
         default_url = reverse(
             'management-menu-default', kwargs={'appid': self.restaurant.appid, 'menu_id': menu_id},
         )
         self.assertEqual(client.post(default_url, **headers).status_code, 200)
+        delete_url = reverse(
+            'management-menu',
+            kwargs={'appid': self.restaurant.appid, 'menu_id': menu_id},
+        )
+        self.assertEqual(client.delete(delete_url, **headers).status_code, 200)
+        self.assertFalse(Menu.objects.filter(pk=menu_id).exists())
+        self.assertFalse(MenuPage.objects.filter(pk=category.json()['id']).exists())
+        self.assertFalse(Dish.objects.filter(pk=dish.json()['id']).exists())
+        self.menu.refresh_from_db()
+        self.assertTrue(self.menu.is_default)
         shop_url = reverse('management-shop-api', kwargs={'appid': self.restaurant.appid})
         self.assertTrue(client.get(shop_url, **headers).json()['is_open'])
         self.assertFalse(client.patch(

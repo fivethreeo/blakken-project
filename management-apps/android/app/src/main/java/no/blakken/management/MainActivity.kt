@@ -84,6 +84,7 @@ private fun ManagementScreen(lifecycle: Lifecycle) {
     var orderCount by remember { mutableStateOf(0) }
     var orderSelection by remember { mutableStateOf(0) }
     var editingMenu by remember { mutableStateOf<MenuItem?>(null) }
+    var menuToDelete by remember { mutableStateOf<MenuItem?>(null) }
     var menuContent by remember { mutableStateOf<MenuContent?>(null) }
     var shopStatus by remember { mutableStateOf<ShopStatus?>(null) }
     var newMenuName by remember { mutableStateOf("") }
@@ -334,7 +335,8 @@ private fun ManagementScreen(lifecycle: Lifecycle) {
 
                 editingMenu != null -> {
                     val menu = editingMenu!!
-                    val appid = selected!!.appid
+                    val restaurant = selected!!
+                    val appid = restaurant.appid
                     MenuEditorScreen(
                         menu = menu,
                         content = menuContent,
@@ -343,6 +345,16 @@ private fun ManagementScreen(lifecycle: Lifecycle) {
                         onBack = {
                             editingMenu = null
                             menuContent = null
+                        },
+                        onDeleteMenu = {
+                            launchAction {
+                                authenticated { token ->
+                                    api.deleteMenu(appid, menu.id, token)
+                                    editingMenu = null
+                                    menuContent = null
+                                    loadRestaurant(restaurant, token)
+                                }
+                            }
                         },
                         onRefresh = {
                             launchAction {
@@ -470,44 +482,81 @@ private fun ManagementScreen(lifecycle: Lifecycle) {
                         item {
                             Text(stringResource(R.string.menus), style = MaterialTheme.typography.titleMedium)
                         }
+                        item {
+                            Text(
+                                stringResource(R.string.swipe_menu_hint),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
                         if (menus.isEmpty()) {
                             item { Text(stringResource(R.string.empty_menus)) }
                         }
                         items(menus, key = { it.id }) { menu ->
-                            Card(modifier = Modifier.fillMaxWidth()) {
-                                Row(
-                                    modifier = Modifier.padding(12.dp).fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    Text(menu.name, modifier = Modifier.weight(1f))
-                                    if (menu.isDefault) {
-                                        Text(stringResource(R.string.default_menu))
-                                    } else {
-                                        Button(
+                            val dismissState = rememberSwipeToDismissBoxState()
+                            SwipeToDismissBox(
+                                state = dismissState,
+                                modifier = Modifier.fillMaxWidth(),
+                                enableDismissFromStartToEnd = false,
+                                gesturesEnabled = !loading,
+                                backgroundContent = {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                                        horizontalArrangement = Arrangement.End,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        TextButton(
                                             enabled = !loading,
                                             onClick = {
-                                                launchAction {
-                                                    authenticated { token ->
-                                                        api.setDefaultMenu(restaurant.appid, menu.id, token)
-                                                        loadRestaurant(restaurant, token)
-                                                    }
-                                                }
+                                                menuToDelete = menu
+                                                scope.launch { dismissState.reset() }
                                             },
-                                        ) { Text(stringResource(R.string.make_default)) }
-                                    }
-                                }
-                                Button(
-                                    enabled = !loading,
-                                    onClick = {
-                                        editingMenu = menu
-                                        menuContent = null
-                                        launchAction {
-                                            menuContent = authenticated { token ->
-                                                api.menuContent(restaurant.appid, menu.id, token)
-                                            }
+                                        ) {
+                                            Text(
+                                                stringResource(R.string.delete_menu),
+                                                color = MaterialTheme.colorScheme.error,
+                                            )
                                         }
-                                    },
-                                ) { Text(stringResource(R.string.edit_menu)) }
+                                    }
+                                },
+                            ) {
+                                Card(modifier = Modifier.fillMaxWidth()) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        Text(menu.name, modifier = Modifier.weight(1f))
+                                        if (menu.isDefault) {
+                                            Text(stringResource(R.string.default_menu))
+                                        } else {
+                                            Button(
+                                                enabled = !loading,
+                                                onClick = {
+                                                    launchAction {
+                                                        authenticated { token ->
+                                                            api.setDefaultMenu(restaurant.appid, menu.id, token)
+                                                            loadRestaurant(restaurant, token)
+                                                        }
+                                                    }
+                                                },
+                                            ) { Text(stringResource(R.string.make_default)) }
+                                        }
+                                    }
+                                    Button(
+                                        enabled = !loading,
+                                        onClick = {
+                                            editingMenu = menu
+                                            menuContent = null
+                                            launchAction {
+                                                menuContent = authenticated { token ->
+                                                    api.menuContent(restaurant.appid, menu.id, token)
+                                                }
+                                            }
+                                        },
+                                    ) { Text(stringResource(R.string.edit_menu)) }
+                                }
                             }
                         }
                         item {
@@ -583,6 +632,33 @@ private fun ManagementScreen(lifecycle: Lifecycle) {
                             )
                         }
                     }
+                    menuToDelete?.let { menu ->
+                        AlertDialog(
+                            onDismissRequest = { menuToDelete = null },
+                            title = { Text(stringResource(R.string.delete_menu_confirmation)) },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    menuToDelete = null
+                                    val restaurant = selected
+                                    if (restaurant != null) {
+                                        launchAction {
+                                            authenticated { token ->
+                                                api.deleteMenu(restaurant.appid, menu.id, token)
+                                                loadRestaurant(restaurant, token)
+                                            }
+                                        }
+                                    }
+                                }) {
+                                    Text(stringResource(R.string.delete_menu), color = MaterialTheme.colorScheme.error)
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { menuToDelete = null }) {
+                                    Text(stringResource(R.string.cancel))
+                                }
+                            },
+                        )
+                    }
                 }
             }
         }
@@ -632,6 +708,7 @@ private fun MenuEditorScreen(
     loading: Boolean,
     modifier: Modifier = Modifier,
     onBack: () -> Unit,
+    onDeleteMenu: () -> Unit,
     onRefresh: () -> Unit,
     onCreateCategory: (String) -> Unit,
     onUpdateCategory: (Int, String, Boolean) -> Unit,
@@ -643,6 +720,7 @@ private fun MenuEditorScreen(
     var categoryName by remember(menu.id) { mutableStateOf("") }
     var selectedCategoryId by remember(menu.id) { mutableStateOf<Int?>(null) }
     var categoryToDelete by remember(menu.id) { mutableStateOf<MenuCategory?>(null) }
+    var isConfirmingMenuDelete by remember(menu.id) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val selectedCategory = content?.categories?.firstOrNull { it.id == selectedCategoryId }
     BackHandler {
@@ -661,6 +739,12 @@ private fun MenuEditorScreen(
             Button(onClick = onBack) { Text(stringResource(R.string.back)) }
             Text(menu.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
             Button(enabled = !loading, onClick = onRefresh) { Text(stringResource(R.string.refresh)) }
+        }
+        TextButton(
+            enabled = !loading,
+            onClick = { isConfirmingMenuDelete = true },
+        ) {
+            Text(stringResource(R.string.delete_menu), color = MaterialTheme.colorScheme.error)
         }
         when {
             selectedCategoryId == null -> {
@@ -796,6 +880,25 @@ private fun MenuEditorScreen(
             },
             dismissButton = {
                 TextButton(onClick = { categoryToDelete = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
+    }
+    if (isConfirmingMenuDelete) {
+        AlertDialog(
+            onDismissRequest = { isConfirmingMenuDelete = false },
+            title = { Text(stringResource(R.string.delete_menu_confirmation)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    isConfirmingMenuDelete = false
+                    onDeleteMenu()
+                }) {
+                    Text(stringResource(R.string.delete_menu), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { isConfirmingMenuDelete = false }) {
                     Text(stringResource(R.string.cancel))
                 }
             },

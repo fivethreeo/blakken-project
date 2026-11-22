@@ -176,6 +176,14 @@ class ManagementApi(private val context: Context) {
         )
     }
 
+    suspend fun deleteMenu(appid: String, menuId: Int, token: String) {
+        request(
+            "api/v1/management/restaurants/$appid/menus/$menuId/",
+            method = "DELETE",
+            token = token,
+        )
+    }
+
     suspend fun menuContent(appid: String, menuId: Int, token: String): MenuContent {
         val data = request("api/v1/management/restaurants/$appid/menus/$menuId/content/", token = token)
         val rows = data.getJSONArray("categories")

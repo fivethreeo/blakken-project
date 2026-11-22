@@ -6,6 +6,8 @@ struct ManagementView: View {
     @State private var email = "maharaja-demo@example.test"
     @State private var password = ""
     @State private var newMenuName = ""
+    @State private var menuToDelete: ManagementMenu?
+    @State private var isConfirmingMenuDelete = false
 
     var body: some View {
         NavigationStack {
@@ -38,6 +40,17 @@ struct ManagementView: View {
                 Button("management.ok") { model.errorMessage = nil }
             } message: {
                 Text(model.errorMessage ?? "")
+            }
+            .confirmationDialog(
+                "management.deleteMenuConfirmation",
+                isPresented: $isConfirmingMenuDelete,
+                titleVisibility: .visible
+            ) {
+                Button("management.deleteMenu", role: .destructive) {
+                    guard let menuToDelete else { return }
+                    Task { await model.deleteMenu(menuID: menuToDelete.id) }
+                    self.menuToDelete = nil
+                }
             }
         }
         .onAppear {
@@ -132,6 +145,8 @@ struct ManagementView: View {
             }
 
             Section("management.menus") {
+                Text("management.swipeMenuHint")
+                    .foregroundStyle(.secondary)
                 if model.menus.isEmpty {
                     Text("management.emptyMenus")
                         .foregroundStyle(.secondary)
@@ -156,6 +171,15 @@ struct ManagementView: View {
                             }
                             .disabled(model.isLoading)
                         }
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button(role: .destructive) {
+                            menuToDelete = menu
+                            isConfirmingMenuDelete = true
+                        } label: {
+                            Label("management.deleteMenu", systemImage: "trash")
+                        }
+                        .disabled(model.isLoading)
                     }
                 }
                 HStack {

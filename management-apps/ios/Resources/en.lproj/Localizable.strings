@@ -35,6 +35,9 @@
 "management.newMenuName" = "New menu name";
 "management.createMenu" = "Create menu";
 "management.editMenu" = "Edit menu content";
+"management.deleteMenu" = "Delete menu";
+"management.deleteMenuConfirmation" = "Delete this menu and all of its categories and dishes?";
+"management.swipeMenuHint" = "Swipe left on a menu to delete it.";
 "management.categories" = "Categories";
 "management.swipeActionsHint" = "Swipe left on a category or dish for actions.";
 "management.hide" = "Hide";
