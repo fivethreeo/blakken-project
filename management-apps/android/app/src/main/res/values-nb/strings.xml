@@ -42,6 +42,9 @@
     <string name="add_category">Legg til kategori</string>
     <string name="category_name">Kategorinavn</string>
     <string name="category_dish_count">Retter: %1$d</string>
+    <string name="swipe_actions_hint">Sveip til venstre på en kategori eller rett for å vise handlinger.</string>
+    <string name="hide_item">Skjul</string>
+    <string name="show_item">Vis</string>
     <string name="category_visible">Synlig for kunder</string>
     <string name="category_hidden">Skjult for kunder</string>
     <string name="save_category">Lagre kategori</string>

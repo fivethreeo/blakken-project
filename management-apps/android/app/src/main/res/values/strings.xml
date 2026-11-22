@@ -42,6 +42,9 @@
     <string name="add_category">Add category</string>
     <string name="category_name">Category name</string>
     <string name="category_dish_count">Dishes: %1$d</string>
+    <string name="swipe_actions_hint">Swipe left on a category or dish for actions.</string>
+    <string name="hide_item">Hide</string>
+    <string name="show_item">Show</string>
     <string name="category_visible">Visible to customers</string>
     <string name="category_hidden">Hidden from customers</string>
     <string name="save_category">Save category</string>

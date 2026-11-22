@@ -36,6 +36,9 @@
 "management.createMenu" = "Opprett meny";
 "management.editMenu" = "Rediger menyinnhold";
 "management.categories" = "Kategorier";
+"management.swipeActionsHint" = "Sveip til venstre på en kategori eller rett for å vise handlinger.";
+"management.hide" = "Skjul";
+"management.show" = "Vis";
 "management.emptyCategories" = "Ingen kategorier ennå.";
 "management.addCategory" = "Legg til kategori";
 "management.category" = "Kategori";

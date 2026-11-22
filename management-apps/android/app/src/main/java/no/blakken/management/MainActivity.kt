@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.background
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
@@ -24,6 +25,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -635,6 +638,8 @@ private fun MenuEditorScreen(
 ) {
     var categoryName by remember(menu.id) { mutableStateOf("") }
     var selectedCategoryId by remember(menu.id) { mutableStateOf<Int?>(null) }
+    var categoryToDelete by remember(menu.id) { mutableStateOf<MenuCategory?>(null) }
+    val scope = rememberCoroutineScope()
     val selectedCategory = content?.categories?.firstOrNull { it.id == selectedCategoryId }
     BackHandler {
         if (selectedCategoryId != null) {
@@ -677,23 +682,71 @@ private fun MenuEditorScreen(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
+                    item {
+                        Text(
+                            stringResource(R.string.swipe_actions_hint),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
                     items(content?.categories.orEmpty(), key = { it.id }) { category ->
-                        Card(
+                        val dismissState = rememberSwipeToDismissBoxState()
+                        SwipeToDismissBox(
+                            state = dismissState,
                             modifier = Modifier.fillMaxWidth(),
-                            onClick = { selectedCategoryId = category.id },
-                            enabled = !loading,
+                            enableDismissFromStartToEnd = false,
+                            gesturesEnabled = !loading,
+                            backgroundContent = {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                                    horizontalArrangement = Arrangement.End,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    TextButton(
+                                        enabled = !loading,
+                                        onClick = {
+                                            onUpdateCategory(category.id, category.name, !category.isVisible)
+                                            scope.launch { dismissState.reset() }
+                                        },
+                                    ) {
+                                        Text(stringResource(
+                                            if (category.isVisible) R.string.hide_item else R.string.show_item,
+                                        ))
+                                    }
+                                    TextButton(
+                                        enabled = !loading,
+                                        onClick = {
+                                            categoryToDelete = category
+                                            scope.launch { dismissState.reset() }
+                                        },
+                                    ) {
+                                        Text(
+                                            stringResource(R.string.delete_category),
+                                            color = MaterialTheme.colorScheme.error,
+                                        )
+                                    }
+                                }
+                            }
                         ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = { selectedCategoryId = category.id },
+                                enabled = !loading,
                             ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(category.name, style = MaterialTheme.typography.titleMedium)
-                                    Text(
-                                        stringResource(R.string.category_dish_count, category.dishes.size),
-                                    )
-                                    if (!category.isVisible) {
-                                        Text(stringResource(R.string.category_hidden))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(category.name, style = MaterialTheme.typography.titleMedium)
+                                        Text(
+                                            stringResource(R.string.category_dish_count, category.dishes.size),
+                                        )
+                                        if (!category.isVisible) {
+                                            Text(stringResource(R.string.category_hidden))
+                                        }
                                     }
                                 }
                             }
@@ -707,10 +760,6 @@ private fun MenuEditorScreen(
                 loading = loading,
                 onBack = { selectedCategoryId = null },
                 onUpdate = onUpdateCategory,
-                onDelete = { categoryId ->
-                    onDeleteCategory(categoryId)
-                    selectedCategoryId = null
-                },
                 onCreateDish = onCreateDish,
                 onUpdateDish = onUpdateDish,
                 onDeleteDish = onDeleteDish,
@@ -725,6 +774,25 @@ private fun MenuEditorScreen(
             }
         }
     }
+    categoryToDelete?.let { category ->
+        AlertDialog(
+            onDismissRequest = { categoryToDelete = null },
+            title = { Text(stringResource(R.string.delete_category_confirmation)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    categoryToDelete = null
+                    onDeleteCategory(category.id)
+                }) {
+                    Text(stringResource(R.string.delete_category), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { categoryToDelete = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
+    }
 }
 
 @Composable
@@ -733,17 +801,17 @@ private fun CategoryEditorScreen(
     loading: Boolean,
     onBack: () -> Unit,
     onUpdate: (Int, String, Boolean) -> Unit,
-    onDelete: (Int) -> Unit,
     onCreateDish: (Int, String, String, String, Boolean) -> Unit,
     onUpdateDish: (MenuDish, String, String, String, Boolean) -> Unit,
     onDeleteDish: (Int) -> Unit,
 ) {
     var name by remember(category.id) { mutableStateOf(category.name) }
-    var isVisible by remember(category.id) { mutableStateOf(category.isVisible) }
+    var isVisible by remember(category.id, category.isVisible) { mutableStateOf(category.isVisible) }
     var newDishName by remember(category.id) { mutableStateOf("") }
     var newDishDescription by remember(category.id) { mutableStateOf("") }
     var newDishPrice by remember(category.id) { mutableStateOf("") }
-    var isConfirmingDelete by remember(category.id) { mutableStateOf(false) }
+    var dishToDelete by remember(category.id) { mutableStateOf<MenuDish?>(null) }
+    val scope = rememberCoroutineScope()
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -774,24 +842,72 @@ private fun CategoryEditorScreen(
             ) {
                 Text(stringResource(R.string.save_category))
             }
-            Button(enabled = !loading, onClick = { isConfirmingDelete = true }) {
-                Text(stringResource(R.string.delete_category))
-            }
         }
         Text(stringResource(R.string.dishes), style = MaterialTheme.typography.titleMedium)
+        Text(
+            stringResource(R.string.swipe_actions_hint),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
         LazyColumn(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             items(category.dishes, key = { it.id }) { dish ->
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        DishEditorCard(
-                            dish = dish,
-                            enabled = !loading,
-                            onSave = onUpdateDish,
-                            onDelete = onDeleteDish,
-                        )
+                val dismissState = rememberSwipeToDismissBoxState()
+                SwipeToDismissBox(
+                    state = dismissState,
+                    modifier = Modifier.fillMaxWidth(),
+                    enableDismissFromStartToEnd = false,
+                    gesturesEnabled = !loading,
+                    backgroundContent = {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            TextButton(
+                                enabled = !loading,
+                                onClick = {
+                                    onUpdateDish(
+                                        dish,
+                                        dish.name,
+                                        dish.description,
+                                        dish.price.orEmpty(),
+                                        !dish.isVisible,
+                                    )
+                                    scope.launch { dismissState.reset() }
+                                },
+                            ) {
+                                Text(stringResource(
+                                    if (dish.isVisible) R.string.hide_item else R.string.show_item,
+                                ))
+                            }
+                            TextButton(
+                                enabled = !loading,
+                                onClick = {
+                                    dishToDelete = dish
+                                    scope.launch { dismissState.reset() }
+                                },
+                            ) {
+                                Text(
+                                    stringResource(R.string.delete_dish),
+                                    color = MaterialTheme.colorScheme.error,
+                                )
+                            }
+                        }
+                    },
+                ) {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            DishEditorCard(
+                                dish = dish,
+                                enabled = !loading,
+                                onSave = onUpdateDish,
+                            )
+                        }
                     }
                 }
             }
@@ -834,18 +950,20 @@ private fun CategoryEditorScreen(
             }
         }
     }
-    if (isConfirmingDelete) {
+    dishToDelete?.let { dish ->
         AlertDialog(
-            onDismissRequest = { isConfirmingDelete = false },
-            title = { Text(stringResource(R.string.delete_category_confirmation)) },
+            onDismissRequest = { dishToDelete = null },
+            title = { Text(stringResource(R.string.delete_dish_confirmation)) },
             confirmButton = {
                 TextButton(onClick = {
-                    isConfirmingDelete = false
-                    onDelete(category.id)
-                }) { Text(stringResource(R.string.delete_category)) }
+                    dishToDelete = null
+                    onDeleteDish(dish.id)
+                }) {
+                    Text(stringResource(R.string.delete_dish), color = MaterialTheme.colorScheme.error)
+                }
             },
             dismissButton = {
-                TextButton(onClick = { isConfirmingDelete = false }) {
+                TextButton(onClick = { dishToDelete = null }) {
                     Text(stringResource(R.string.cancel))
                 }
             },
@@ -858,13 +976,11 @@ private fun DishEditorCard(
     dish: MenuDish,
     enabled: Boolean,
     onSave: (MenuDish, String, String, String, Boolean) -> Unit,
-    onDelete: (Int) -> Unit,
 ) {
     var name by remember(dish.id) { mutableStateOf(dish.name) }
     var description by remember(dish.id) { mutableStateOf(dish.description) }
     var price by remember(dish.id) { mutableStateOf(dish.price.orEmpty()) }
-    var isVisible by remember(dish.id) { mutableStateOf(dish.isVisible) }
-    var isConfirmingDelete by remember(dish.id) { mutableStateOf(false) }
+    var isVisible by remember(dish.id, dish.isVisible) { mutableStateOf(dish.isVisible) }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         OutlinedTextField(
             value = name,
@@ -893,27 +1009,7 @@ private fun DishEditorCard(
             Button(enabled = enabled && name.isNotBlank(), onClick = {
                 onSave(dish, name.trim(), description, price, isVisible)
             }) { Text(stringResource(R.string.save_dish)) }
-            Button(enabled = enabled, onClick = { isConfirmingDelete = true }) {
-                Text(stringResource(R.string.delete_dish))
-            }
         }
-    }
-    if (isConfirmingDelete) {
-        AlertDialog(
-            onDismissRequest = { isConfirmingDelete = false },
-            title = { Text(stringResource(R.string.delete_dish_confirmation)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    isConfirmingDelete = false
-                    onDelete(dish.id)
-                }) { Text(stringResource(R.string.delete_dish)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { isConfirmingDelete = false }) {
-                    Text(stringResource(R.string.cancel))
-                }
-            },
-        )
     }
 }
 

@@ -4,6 +4,8 @@ struct MenuEditorView: View {
     @ObservedObject var model: ManagementModel
     let menu: ManagementMenu
     @State private var categoryName = ""
+    @State private var categoryToDeleteID: Int?
+    @State private var isConfirmingCategoryDelete = false
 
     var body: some View {
         List {
@@ -24,6 +26,8 @@ struct MenuEditorView: View {
             }
 
             Section("management.categories") {
+                Text("management.swipeActionsHint")
+                    .foregroundStyle(.secondary)
                 if model.isLoading && model.menuContent == nil {
                     ProgressView("management.loading")
                 } else if let content = model.menuContent {
@@ -48,6 +52,32 @@ struct MenuEditorView: View {
                                     .foregroundStyle(.secondary)
                             }
                         }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) {
+                                categoryToDeleteID = category.id
+                                isConfirmingCategoryDelete = true
+                            } label: {
+                                Label("management.deleteCategory", systemImage: "trash")
+                            }
+                            .disabled(model.isLoading)
+                            Button {
+                                Task {
+                                    await model.updateCategory(
+                                        menuID: menu.id,
+                                        categoryID: category.id,
+                                        name: category.name,
+                                        isVisible: !category.isVisible
+                                    )
+                                }
+                            } label: {
+                                Label(
+                                    category.isVisible ? "management.hide" : "management.show",
+                                    systemImage: category.isVisible ? "eye.slash" : "eye"
+                                )
+                            }
+                            .tint(.orange)
+                            .disabled(model.isLoading)
+                        }
                     }
                 }
             }
@@ -55,6 +85,19 @@ struct MenuEditorView: View {
         .navigationTitle(menu.name)
         .task { await model.loadMenuContent(menuID: menu.id) }
         .refreshable { await model.loadMenuContent(menuID: menu.id) }
+        .confirmationDialog(
+            "management.deleteCategoryConfirmation",
+            isPresented: $isConfirmingCategoryDelete,
+            titleVisibility: .visible
+        ) {
+            Button("management.deleteCategory", role: .destructive) {
+                guard let categoryToDeleteID else { return }
+                Task {
+                    await model.deleteCategory(menuID: menu.id, categoryID: categoryToDeleteID)
+                    self.categoryToDeleteID = nil
+                }
+            }
+        }
     }
 }
 
@@ -66,7 +109,8 @@ private struct CategoryEditorView: View {
     @State private var name = ""
     @State private var isVisible = true
     @State private var didLoadName = false
-    @State private var isConfirmingDelete = false
+    @State private var dishToDeleteID: Int?
+    @State private var isConfirmingDishDelete = false
 
     private var category: ManagementCategory? {
         model.menuContent?.categories.first { $0.id == categoryID }
@@ -92,13 +136,11 @@ private struct CategoryEditorView: View {
                     }
                 }
                 .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.isLoading)
-                Button("management.deleteCategory", role: .destructive) {
-                    isConfirmingDelete = true
-                }
-                .disabled(model.isLoading)
             }
 
             Section("management.dishes") {
+                Text("management.swipeActionsHint")
+                    .foregroundStyle(.secondary)
                 if let category {
                     ForEach(category.dishes) { dish in
                         NavigationLink {
@@ -118,6 +160,35 @@ private struct CategoryEditorView: View {
                                 }
                             }
                         }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) {
+                                dishToDeleteID = dish.id
+                                isConfirmingDishDelete = true
+                            } label: {
+                                Label("management.deleteDish", systemImage: "trash")
+                            }
+                            .disabled(model.isLoading)
+                            Button {
+                                Task {
+                                    await model.updateDish(
+                                        menuID: menu.id,
+                                        dishID: dish.id,
+                                        name: dish.name,
+                                        description: dish.description,
+                                        price: dish.price ?? "",
+                                        allergens: dish.allergens,
+                                        isVisible: !dish.isVisible
+                                    )
+                                }
+                            } label: {
+                                Label(
+                                    dish.isVisible ? "management.hide" : "management.show",
+                                    systemImage: dish.isVisible ? "eye.slash" : "eye"
+                                )
+                            }
+                            .tint(.orange)
+                            .disabled(model.isLoading)
+                        }
                     }
                 }
                 NavigationLink("management.addDish") {
@@ -133,16 +204,15 @@ private struct CategoryEditorView: View {
             didLoadName = true
         }
         .confirmationDialog(
-            "management.deleteCategoryConfirmation",
-            isPresented: $isConfirmingDelete,
+            "management.deleteDishConfirmation",
+            isPresented: $isConfirmingDishDelete,
             titleVisibility: .visible
         ) {
-            Button("management.deleteCategory", role: .destructive) {
+            Button("management.deleteDish", role: .destructive) {
+                guard let dishToDeleteID else { return }
                 Task {
-                    await model.deleteCategory(menuID: menu.id, categoryID: categoryID)
-                    if model.errorMessage == nil {
-                        dismiss()
-                    }
+                    await model.deleteDish(menuID: menu.id, dishID: dishToDeleteID)
+                    self.dishToDeleteID = nil
                 }
             }
         }
@@ -159,7 +229,6 @@ private struct DishEditorView: View {
     @State private var description: String
     @State private var price: String
     @State private var isVisible: Bool
-    @State private var isConfirmingDelete = false
 
     private var dish: ManagementDish? {
         guard let dishID, let categories = model.menuContent?.categories else { return nil }
@@ -221,30 +290,8 @@ private struct DishEditorView: View {
                 }
                 .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.isLoading)
 
-                if let dishID {
-                    Button("management.deleteDish", role: .destructive) {
-                        isConfirmingDelete = true
-                    }
-                    .disabled(model.isLoading)
-                }
             }
         }
         .navigationTitle(dish == nil ? String(localized: "management.addDish") : String(localized: "management.editDish"))
-        .confirmationDialog(
-            "management.deleteDishConfirmation",
-            isPresented: $isConfirmingDelete,
-            titleVisibility: .visible
-        ) {
-            if let dishID {
-                Button("management.deleteDish", role: .destructive) {
-                    Task {
-                        await model.deleteDish(menuID: menu.id, dishID: dishID)
-                        if model.errorMessage == nil {
-                            dismiss()
-                        }
-                    }
-                }
-            }
-        }
     }
 }
