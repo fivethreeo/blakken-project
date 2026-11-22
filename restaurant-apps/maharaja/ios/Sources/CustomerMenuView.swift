@@ -41,6 +41,20 @@ final class CustomerMenuModel: ObservableObject {
     var cartDishes: [MenuDish] {
         (menu?.categories ?? []).flatMap(\.dishes).filter { (quantities[$0.id] ?? 0) > 0 }
     }
+    var cartTotal: Decimal? {
+        guard !cartIsEmpty else { return nil }
+        let dishes = cartDishes
+        guard !dishes.isEmpty else { return nil }
+        var total = Decimal.zero
+        for dish in dishes {
+            guard let priceText = dish.price,
+                  let price = Decimal(string: priceText, locale: Locale(identifier: "en_US_POSIX")) else {
+                return nil
+            }
+            total += price * Decimal(quantities[dish.id] ?? 0)
+        }
+        return total
+    }
     var canEditOrder: Bool { status?.isOpen == true && !isSubmitting }
     var canSubmit: Bool {
         canEditOrder && !cartIsEmpty && !customerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -461,6 +475,15 @@ struct CustomerMenuView: View {
 private struct CustomerCheckoutView: View {
     @ObservedObject var model: CustomerMenuModel
 
+    private var formattedCartTotal: String? {
+        guard let total = model.cartTotal else { return nil }
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = 2
+        formatter.maximumFractionDigits = 2
+        return formatter.string(from: total as NSDecimalNumber)
+    }
+
     var body: some View {
         Form {
             Section("customer.cart") {
@@ -500,6 +523,22 @@ private struct CustomerCheckoutView: View {
                         }
                         .disabled(!model.canEditOrder)
                     }
+                }
+                if !model.cartIsEmpty {
+                    HStack {
+                        Text("customer.total")
+                            .fontWeight(.semibold)
+                        Spacer()
+                        if let formattedCartTotal {
+                            Text("\(formattedCartTotal) \(String(localized: "customer.currency"))")
+                                .monospacedDigit()
+                                .fontWeight(.semibold)
+                        } else {
+                            Text("customer.totalUnavailable")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
                 }
             }
             .disabled(!model.canEditOrder)

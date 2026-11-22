@@ -57,6 +57,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import java.math.BigDecimal
+import java.text.NumberFormat
+import java.util.Locale
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -255,6 +258,17 @@ private fun CustomerMenuScreen(lifecycle: Lifecycle) {
     val cartItems = quantities.entries.mapNotNull { (id, quantity) ->
         dishMap[id]?.let { it to quantity }
     }
+    val cartLineTotals = cartItems.mapNotNull { (dish, quantity) ->
+        dish.price?.toBigDecimalOrNull()?.multiply(BigDecimal.valueOf(quantity.toLong()))
+    }
+    val cartTotal = cartLineTotals.takeIf { it.size == cartItems.size }
+        ?.fold(BigDecimal.ZERO) { total, lineTotal -> total.add(lineTotal) }
+    val formattedCartTotal = cartTotal?.let {
+        NumberFormat.getNumberInstance(Locale.getDefault()).apply {
+            minimumFractionDigits = 2
+            maximumFractionDigits = 2
+        }.format(it)
+    }
     val canEditOrder = status?.isOpen == true && !submitting
     val canSubmit = canEditOrder && cartItems.isNotEmpty()
         && customerName.isNotBlank() && phone.isNotBlank()
@@ -439,6 +453,30 @@ private fun CustomerMenuScreen(lifecycle: Lifecycle) {
                                                 })
                                             }
                                         }
+                                    }
+                                }
+                            }
+                        }
+                        if (cartItems.isNotEmpty()) {
+                            item {
+                                Card(modifier = Modifier.fillMaxWidth()) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(
+                                            stringResource(R.string.cart_total),
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                        )
+                                        Text(
+                                            formattedCartTotal?.let {
+                                                "$it ${stringResource(R.string.currency)}"
+                                            } ?: stringResource(R.string.cart_total_unavailable),
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                        )
                                     }
                                 }
                             }

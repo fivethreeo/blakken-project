@@ -17,6 +17,8 @@
 "customer.cartAndOrders" = "Handlekurv og bestillinger";
 "customer.emptyCart" = "Handlekurven er tom.";
 "customer.swipeToRemove" = "Sveip en vare mot venstre for å fjerne den.";
+"customer.total" = "Totalt";
+"customer.totalUnavailable" = "Totalen er ikke tilgjengelig.";
 "customer.addToCart %@" = "Legg %@ i handlekurven";
 "customer.removeFromCart %@" = "Fjern %@";
 "customer.confirmation" = "Bestillingskvittering";
