@@ -23,7 +23,17 @@ struct ManagementView: View {
             .navigationTitle(Text("management.title"))
             .toolbar {
                 if model.accessToken != nil {
-                    Button("management.signOut", action: model.signOut)
+                    ToolbarItem(placement: .topBarTrailing) {
+                        HStack(spacing: 12) {
+                            if model.selectedRestaurant != nil {
+                                Button("management.refresh", systemImage: "arrow.clockwise") {
+                                    Task { await model.refresh() }
+                                }
+                                .disabled(model.isLoading)
+                            }
+                            Button("management.signOut", action: model.signOut)
+                        }
+                    }
                 }
             }
             .overlay {
@@ -244,12 +254,6 @@ struct ManagementView: View {
                 Button("management.restaurants") {
                     model.showRestaurants()
                 }
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("management.refresh", systemImage: "arrow.clockwise") {
-                    Task { await model.refresh() }
-                }
-                .disabled(model.isLoading)
             }
         }
     }
