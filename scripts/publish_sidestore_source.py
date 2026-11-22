@@ -223,6 +223,16 @@ def make_source(releases, previous_source):
                 "privacy": release.privacy,
             },
         })
+    current_bundle_ids = {app["bundleIdentifier"] for app in source_apps}
+    for config in APPS:
+        if config["bundle_id"] in current_bundle_ids:
+            continue
+        previous_app = previous_apps.get(config["bundle_id"])
+        if previous_app is None:
+            raise RuntimeError(
+                f"The initial source needs a successful build for {config['name']}."
+            )
+        source_apps.append(previous_app)
     return {
         "name": "Blakken Apps",
         "subtitle": "Native apps for Blakken restaurants.",
@@ -317,15 +327,18 @@ def upload(files, host, ssh_key, publication_tag):
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="Publish iOS build artifacts as a SideStore source.")
-    parser.add_argument("--maharaja-run", required=True, help="Successful Build Maharaja iOS run ID")
-    parser.add_argument("--management-run", required=True, help="Successful Build Management iOS run ID")
+    parser.add_argument("--maharaja-run", help="Successful Build Maharaja iOS run ID")
+    parser.add_argument("--management-run", help="Optional Build Management iOS run ID")
     parser.add_argument("--host", default="sugar@192.168.1.100", help="SSH destination for static files")
     parser.add_argument("--ssh-key", type=Path, help="SSH private key (otherwise use ssh-agent/default keys)")
     parser.add_argument("--output-dir", type=Path, default=ROOT / "dist/sidestore")
     parser.add_argument("--dry-run", action="store_true", help="Prepare local files without uploading")
     args = parser.parse_args(argv)
+    if not args.maharaja_run and not args.management_run:
+        parser.error("provide at least one successful iOS workflow run ID")
     for name in ("maharaja_run", "management_run"):
-        if not re.fullmatch(r"[0-9]+", getattr(args, name)):
+        run_id = getattr(args, name)
+        if run_id is not None and not re.fullmatch(r"[0-9]+", run_id):
             parser.error(f"--{name.replace('_', '-')} must be a numeric GitHub Actions run ID")
     return args
 
@@ -333,18 +346,20 @@ def parse_args(argv=None):
 def main(argv=None):
     args = parse_args(argv)
     output_dir = args.output_dir.resolve()
-    runs = [
-        read_run(args.maharaja_run, APPS[0]["workflow"]),
-        read_run(args.management_run, APPS[1]["workflow"]),
+    run_specs = [
+        (run_id, config)
+        for run_id, config in zip(
+            (args.maharaja_run, args.management_run), APPS, strict=True,
+        )
+        if run_id
     ]
-    if runs[0].get("headSha") != runs[1].get("headSha"):
+    runs = [read_run(run_id, config["workflow"]) for run_id, config in run_specs]
+    if len(runs) > 1 and runs[0].get("headSha") != runs[1].get("headSha"):
         raise RuntimeError("Both builds must use the same commit.")
 
     releases = [
         download_release(run_id, config, output_dir)
-        for run_id, config in zip(
-            (args.maharaja_run, args.management_run), APPS, strict=True,
-        )
+        for run_id, config in run_specs
     ]
     previous_source = fetch_previous_source()
     source = make_source(releases, previous_source)
@@ -354,7 +369,7 @@ def main(argv=None):
         print(f"Dry run: source JSON is {output_dir / 'source.json'}")
         return 0
 
-    publication_tag = f"{args.maharaja_run}-{args.management_run}"
+    publication_tag = "-".join(run_id for run_id, _config in run_specs)
     upload(files, args.host, args.ssh_key, publication_tag)
     print(f"Published {SOURCE_URL}")
     return 0

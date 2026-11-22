@@ -88,6 +88,27 @@ class SideStoreSourceTests(unittest.TestCase):
         self.assertEqual(maharaja["versions"][1]["downloadURL"], "https://example/old.ipa")
         self.assertEqual(maharaja["appPermissions"], {"entitlements": [], "privacy": {}})
 
+    def test_source_keeps_unchanged_app_when_only_one_app_is_released(self):
+        config = APPS[0]
+        with tempfile.TemporaryDirectory() as directory:
+            ipa = self.make_ipa(Path(directory) / config["ipa"], config, build_version="22.3")
+            release = read_ipa(ipa, config)
+            management = {
+                "name": "Blakken Management",
+                "bundleIdentifier": APPS[1]["bundle_id"],
+                "versions": [{
+                    "version": "1.0",
+                    "buildVersion": "16.1",
+                    "downloadURL": "https://example/management.ipa",
+                }],
+            }
+            source = make_source([release], {"apps": [management]})
+        self.assertEqual(
+            [app["bundleIdentifier"] for app in source["apps"]],
+            [APPS[0]["bundle_id"], APPS[1]["bundle_id"]],
+        )
+        self.assertEqual(source["apps"][1]["versions"], management["versions"])
+
     def test_saves_ipa_icons_and_parseable_source(self):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "output"

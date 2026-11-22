@@ -21,13 +21,13 @@ the restaurant's public app ID.
 
 ### Publish iOS apps to SideStore
 
-After both **Build Maharaja iOS** and **Build Management iOS** have completed
-successfully from the same commit on `main`, publish their run IDs locally:
+For the first publication, run both **Build Maharaja iOS** and **Build
+Management iOS** successfully from the same commit on `main`. For later updates,
+you only need a successful run for each app that changed:
 
 ```sh
-python3 scripts/publish_sidestore_source.py \
-  --maharaja-run <maharaja-run-id> \
-  --management-run <management-run-id>
+python3 scripts/publish_sidestore_source.py [--maharaja-run <run-id>] \
+  [--management-run <run-id>]
 ```
 
 The command downloads both IPA artifacts with `gh`, checks their bundle IDs and
