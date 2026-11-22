@@ -90,6 +90,10 @@ private fun ManagementScreen(lifecycle: Lifecycle) {
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
 
+    LaunchedEffect(accessToken) {
+        if (accessToken == null) password = ""
+    }
+
     suspend fun <T> authenticated(action: suspend (String) -> T): T {
         val currentAccess = accessToken
             ?: throw ManagementApiError(401, context.getString(R.string.authentication_required))

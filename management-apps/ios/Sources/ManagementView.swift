@@ -50,6 +50,9 @@ struct ManagementView: View {
                 model.pauseOrderUpdates()
             }
         }
+        .onChange(of: model.accessToken) { _, token in
+            if token == nil { password = "" }
+        }
         .onDisappear { model.pauseOrderUpdates() }
     }
 
