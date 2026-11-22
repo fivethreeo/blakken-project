@@ -9,6 +9,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import urllib.error
 import urllib.request
 import zipfile
@@ -141,14 +142,17 @@ def read_ipa(ipa, config):
 def download_release(run_id, config, output_dir):
     artifact_dir = output_dir / "artifacts" / config["key"]
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    command([
-        "gh", "run", "download", run_id,
-        "--name", config["artifact"],
-        "--dir", str(artifact_dir),
-    ])
-    ipa = artifact_dir / config["ipa"]
-    if not ipa.is_file():
-        raise RuntimeError(f"Run {run_id} did not provide {config['ipa']}.")
+    with tempfile.TemporaryDirectory(prefix="sidestore-artifact-", dir=output_dir) as temp_dir:
+        command([
+            "gh", "run", "download", run_id,
+            "--name", config["artifact"],
+            "--dir", temp_dir,
+        ])
+        downloaded_ipa = Path(temp_dir) / config["ipa"]
+        if not downloaded_ipa.is_file():
+            raise RuntimeError(f"Run {run_id} did not provide {config['ipa']}.")
+        ipa = artifact_dir / config["ipa"]
+        shutil.copy2(downloaded_ipa, ipa)
     return read_ipa(ipa, config)
 
 

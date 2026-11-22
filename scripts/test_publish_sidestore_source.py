@@ -4,7 +4,9 @@ import tempfile
 import unittest
 import zipfile
 import plistlib
+from unittest.mock import patch
 
+import publish_sidestore_source
 from publish_sidestore_source import APPS, make_source, read_ipa, save_local_files
 
 
@@ -35,6 +37,23 @@ class SideStoreSourceTests(unittest.TestCase):
             release = read_ipa(ipa, config)
         self.assertEqual(release.version, "1.0")
         self.assertEqual(release.build_version, "10")
+
+    def test_download_uses_fresh_temp_directory_when_retried(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            config = APPS[0]
+            old_artifact = output / "artifacts/maharaja/Maharaja.ipa"
+            old_artifact.parent.mkdir(parents=True)
+            self.make_ipa(old_artifact, config, build_version="10")
+
+            def download(args):
+                temp_dir = Path(args[args.index("--dir") + 1])
+                self.make_ipa(temp_dir / config["ipa"], config, build_version="11")
+
+            with patch.object(publish_sidestore_source, "command", side_effect=download):
+                release = publish_sidestore_source.download_release("123", config, output)
+
+            self.assertEqual(release.build_version, "11")
 
     def test_rejects_non_production_configuration(self):
         with tempfile.TemporaryDirectory() as directory:
