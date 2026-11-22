@@ -16,6 +16,7 @@
 "customer.cart" = "Cart";
 "customer.cartAndOrders" = "Cart and orders";
 "customer.emptyCart" = "Your cart is empty.";
+"customer.swipeToRemove" = "Swipe an item left to remove it.";
 "customer.addToCart %@" = "Add %@ to cart";
 "customer.removeFromCart %@" = "Remove %@";
 "customer.confirmation" = "Order receipt";

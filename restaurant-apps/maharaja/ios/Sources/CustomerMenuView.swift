@@ -467,6 +467,10 @@ private struct CustomerCheckoutView: View {
                 if model.cartIsEmpty {
                     Text("customer.emptyCart")
                         .foregroundStyle(.secondary)
+                } else {
+                    Text("customer.swipeToRemove")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
                 ForEach(model.cartDishes) { dish in
                     VStack(alignment: .leading, spacing: 8) {
@@ -490,6 +494,17 @@ private struct CustomerCheckoutView: View {
                             Text("customer.removeFromCart \(dish.name)")
                         }
                         .buttonStyle(.borderless)
+                    }
+                    .swipeActions(edge: .trailing) {
+                        Button(role: .destructive) {
+                            model.setQuantity(0, for: dish.id)
+                        } label: {
+                            Label(
+                                "customer.removeFromCart \(dish.name)",
+                                systemImage: "trash"
+                            )
+                        }
+                        .disabled(!model.canEditOrder)
                     }
                 }
             }

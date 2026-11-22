@@ -16,6 +16,8 @@
     <string name="add_to_cart">Add %1$s to cart</string>
     <string name="remove_from_cart">Remove %1$s</string>
     <string name="empty_cart">Your cart is empty.</string>
+    <string name="swipe_to_remove">Swipe an item left to remove it.</string>
+    <string name="remove_item">Remove</string>
     <string name="back_to_menu">Menu</string>
     <string name="checkout_count">Cart and orders (%1$d)</string>
     <string name="cart_and_orders">Cart and orders</string>

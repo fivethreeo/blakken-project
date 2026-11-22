@@ -5,13 +5,15 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.background
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -21,12 +23,16 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -67,6 +73,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 private fun CustomerMenuScreen(lifecycle: Lifecycle) {
     val context = LocalContext.current
     val api = remember(context) { CustomerApi(context) }
@@ -362,45 +369,81 @@ private fun CustomerMenuScreen(lifecycle: Lifecycle) {
                         if (cartItems.isEmpty() && customerOrders.isEmpty()) {
                             item { Text(stringResource(R.string.empty_cart)) }
                         }
+                        if (cartItems.isNotEmpty()) {
+                            item {
+                                Text(
+                                    stringResource(R.string.swipe_to_remove),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.padding(horizontal = 12.dp),
+                                )
+                            }
+                        }
                         items(cartItems, key = { it.first.id }) { (dish, quantity) ->
-                            Card(modifier = Modifier.fillMaxWidth()) {
-                                Column(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    Text(dish.name, style = MaterialTheme.typography.titleMedium)
-                                    dish.price?.let { Text("$it ${stringResource(R.string.currency)}") }
-                                    val decreaseLabel = stringResource(R.string.remove_one)
-                                    val increaseLabel = stringResource(R.string.add_one)
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
+                            val dismissState = rememberSwipeToDismissBoxState()
+                            LaunchedEffect(dismissState.currentValue) {
+                                if (dismissState.currentValue == SwipeToDismissBoxValue.EndToStart) {
+                                    changeQuantity(dish.id, 0)
+                                }
+                            }
+                            SwipeToDismissBox(
+                                state = dismissState,
+                                enableDismissFromStartToEnd = false,
+                                gesturesEnabled = canEditOrder,
+                                backgroundContent = {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(MaterialTheme.colorScheme.errorContainer)
+                                            .padding(horizontal = 20.dp),
+                                        contentAlignment = Alignment.CenterEnd,
                                     ) {
-                                        IconButton(
-                                            enabled = canEditOrder && quantity > 1,
-                                            onClick = { changeQuantity(dish.id, quantity - 1) },
-                                        ) {
-                                            Text("-", modifier = Modifier.clearAndSetSemantics {
-                                                contentDescription = decreaseLabel
-                                            })
-                                        }
                                         Text(
-                                            stringResource(R.string.quantity_count, quantity),
-                                            modifier = Modifier.weight(1f),
+                                            stringResource(R.string.remove_item),
+                                            color = MaterialTheme.colorScheme.onErrorContainer,
                                         )
-                                        IconButton(
-                                            enabled = canEditOrder && quantity < 99,
-                                            onClick = { changeQuantity(dish.id, quantity + 1) },
-                                        ) {
-                                            Text("+", modifier = Modifier.clearAndSetSemantics {
-                                                contentDescription = increaseLabel
-                                            })
-                                        }
                                     }
-                                    TextButton(
-                                        enabled = canEditOrder,
-                                        onClick = { changeQuantity(dish.id, 0) },
-                                    ) { Text(stringResource(R.string.remove_from_cart, dish.name)) }
+                                },
+                            ) {
+                                Card(modifier = Modifier.fillMaxWidth()) {
+                                    Column(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        Text(dish.name, style = MaterialTheme.typography.titleMedium)
+                                        dish.price?.let { Text("$it ${stringResource(R.string.currency)}") }
+                                        val decreaseLabel = stringResource(R.string.remove_one)
+                                        val increaseLabel = stringResource(R.string.add_one)
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            IconButton(
+                                                enabled = canEditOrder && quantity > 1,
+                                                onClick = { changeQuantity(dish.id, quantity - 1) },
+                                            ) {
+                                                Text("-", modifier = Modifier.clearAndSetSemantics {
+                                                    contentDescription = decreaseLabel
+                                                })
+                                            }
+                                            Text(
+                                                stringResource(R.string.quantity_count, quantity),
+                                                modifier = Modifier.weight(1f),
+                                            )
+                                            IconButton(
+                                                enabled = canEditOrder && quantity < 99,
+                                                onClick = { changeQuantity(dish.id, quantity + 1) },
+                                            ) {
+                                                Text("+", modifier = Modifier.clearAndSetSemantics {
+                                                    contentDescription = increaseLabel
+                                                })
+                                            }
+                                        }
+                                        TextButton(
+                                            enabled = canEditOrder,
+                                            onClick = { changeQuantity(dish.id, 0) },
+                                        ) { Text(stringResource(R.string.remove_from_cart, dish.name)) }
+                                    }
                                 }
                             }
                         }
