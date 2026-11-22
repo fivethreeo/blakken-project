@@ -14,7 +14,6 @@
     <string name="quantity_count">Antall: %1$d</string>
     <string name="cart">Handlekurv</string>
     <string name="add_to_cart">Legg %1$s i handlekurven</string>
-    <string name="remove_from_cart">Fjern %1$s</string>
     <string name="empty_cart">Handlekurven er tom.</string>
     <string name="swipe_to_remove">Sveip en vare mot venstre for å fjerne den.</string>
     <string name="remove_item">Fjern</string>

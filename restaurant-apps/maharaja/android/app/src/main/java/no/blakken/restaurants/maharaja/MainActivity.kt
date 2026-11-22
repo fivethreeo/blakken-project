@@ -439,10 +439,6 @@ private fun CustomerMenuScreen(lifecycle: Lifecycle) {
                                                 })
                                             }
                                         }
-                                        TextButton(
-                                            enabled = canEditOrder,
-                                            onClick = { changeQuantity(dish.id, 0) },
-                                        ) { Text(stringResource(R.string.remove_from_cart, dish.name)) }
                                     }
                                 }
                             }

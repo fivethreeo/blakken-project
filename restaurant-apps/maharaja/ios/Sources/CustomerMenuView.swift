@@ -488,12 +488,6 @@ private struct CustomerCheckoutView: View {
                                 Text("\(model.quantities[dish.id] ?? 0)")
                             }
                         }
-                        Button(role: .destructive) {
-                            model.setQuantity(0, for: dish.id)
-                        } label: {
-                            Text("customer.removeFromCart \(dish.name)")
-                        }
-                        .buttonStyle(.borderless)
                     }
                     .swipeActions(edge: .trailing) {
                         Button(role: .destructive) {
