@@ -6,6 +6,7 @@ __pycache__/
 .Python
 build/
 dist/
+site/
 .gradle/
 *.mo
 downloads/
@@ -22,6 +23,7 @@ wheels/
 *.egg
 MANIFEST
 .venv/
+.venv-docs/
 venv/
 env/
 ENV/

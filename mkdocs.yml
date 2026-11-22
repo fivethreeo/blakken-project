@@ -1,0 +1,27 @@
+site_name: Blakken Apprentice Guide
+docs_dir: docs
+site_dir: site
+nav:
+  - Home: index.md
+  - Get your bearings:
+      - How this work feels: apprentice/01-how-this-work-feels.md
+      - Know the project: apprentice/02-know-the-project.md
+      - Get it running: apprentice/03-get-it-running.md
+  - Work through the conversation:
+      - Say what is wrong: apprentice/04-say-whats-wrong.md
+      - Correct the direction: apprentice/05-correct-the-direction.md
+      - Reuse what worked: apprentice/06-reuse-what-worked.md
+      - The menu-delete story: apprentice/07-menu-delete-story.md
+      - Customer and staff: apprentice/08-customer-and-staff.md
+      - Live, not manual: apprentice/09-live-not-manual.md
+      - Access problems: apprentice/10-access-is-not-a-ui-fix.md
+  - Finish the change:
+      - Read the checks: apprentice/11-read-the-checks.md
+      - Before publishing: apprentice/12-before-you-say-publish.md
+      - The publish dance: apprentice/13-the-publish-dance.md
+      - What published means: apprentice/14-what-published-means.md
+      - Deploy the API: apprentice/15-deploy-the-api.md
+      - Read the deployment: apprentice/16-read-the-deployment.md
+  - Take over:
+      - When work stops: apprentice/17-when-work-stops.md
+      - Keep the thread: apprentice/18-take-over.md

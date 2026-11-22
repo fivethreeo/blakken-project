@@ -277,6 +277,25 @@ which the matching Ansible role writes as
 `DJANGO_MANAGEMENT_REQUIRE_APP_VERIFICATION=false`. Other deployments keep the
 default-required policy.
 
+## Apprentice onboarding
+
+The [apprentice guide](docs/index.md) follows the actual conversational workflow:
+short requests, trying the result, corrections, the publish dance, and API
+deployment. Eighteen linked chapters use real Blakken changes and finish with
+what the next maintainer needs to take over.
+
+Build and preview the documentation site with:
+
+```sh
+python3 -m venv .venv-docs
+. .venv-docs/bin/activate
+python -m pip install -r requirements-docs.txt
+python -m mkdocs serve
+```
+
+Create a static site in the ignored `site/` directory with
+`python -m mkdocs build --strict`.
+
 ## Development
 
 Run the projects present in the checkout with `python run.py parallel`.
