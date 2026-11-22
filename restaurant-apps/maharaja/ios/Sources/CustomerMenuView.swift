@@ -412,7 +412,7 @@ struct CustomerMenuView: View {
         List {
             Section {
                 HStack(spacing: 16) {
-                    Image("BlakkenLogo")
+                    Image("MaharajaLogo")
                         .resizable()
                         .scaledToFit()
                         .frame(width: 64, height: 96)

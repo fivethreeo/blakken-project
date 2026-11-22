@@ -289,8 +289,8 @@ private fun CustomerMenuScreen(lifecycle: Lifecycle) {
         ) {
             if (!showingCheckout) {
                 Image(
-                    painter = painterResource(R.drawable.blakken_logo),
-                    contentDescription = stringResource(R.string.blakken_logo_description),
+                    painter = painterResource(R.drawable.maharaja_logo),
+                    contentDescription = stringResource(R.string.maharaja_logo_description),
                     contentScale = ContentScale.Fit,
                     modifier = Modifier.fillMaxWidth().height(96.dp),
                 )
