@@ -760,6 +760,10 @@ private fun MenuEditorScreen(
                 loading = loading,
                 onBack = { selectedCategoryId = null },
                 onUpdate = onUpdateCategory,
+                onDeleteCategory = { categoryId ->
+                    onDeleteCategory(categoryId)
+                    selectedCategoryId = null
+                },
                 onCreateDish = onCreateDish,
                 onUpdateDish = onUpdateDish,
                 onDeleteDish = onDeleteDish,
@@ -801,6 +805,7 @@ private fun CategoryEditorScreen(
     loading: Boolean,
     onBack: () -> Unit,
     onUpdate: (Int, String, Boolean) -> Unit,
+    onDeleteCategory: (Int) -> Unit,
     onCreateDish: (Int, String, String, String, Boolean) -> Unit,
     onUpdateDish: (MenuDish, String, String, String, Boolean) -> Unit,
     onDeleteDish: (Int) -> Unit,
@@ -811,6 +816,7 @@ private fun CategoryEditorScreen(
     var newDishDescription by remember(category.id) { mutableStateOf("") }
     var newDishPrice by remember(category.id) { mutableStateOf("") }
     var dishToDelete by remember(category.id) { mutableStateOf<MenuDish?>(null) }
+    var isConfirmingCategoryDelete by remember(category.id) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -841,6 +847,15 @@ private fun CategoryEditorScreen(
                 onClick = { onUpdate(category.id, name.trim(), isVisible) },
             ) {
                 Text(stringResource(R.string.save_category))
+            }
+            TextButton(
+                enabled = !loading,
+                onClick = { isConfirmingCategoryDelete = true },
+            ) {
+                Text(
+                    stringResource(R.string.delete_category),
+                    color = MaterialTheme.colorScheme.error,
+                )
             }
         }
         Text(stringResource(R.string.dishes), style = MaterialTheme.typography.titleMedium)
@@ -906,6 +921,7 @@ private fun CategoryEditorScreen(
                                 dish = dish,
                                 enabled = !loading,
                                 onSave = onUpdateDish,
+                                onRequestDelete = { dishToDelete = it },
                             )
                         }
                     }
@@ -950,6 +966,28 @@ private fun CategoryEditorScreen(
             }
         }
     }
+    if (isConfirmingCategoryDelete) {
+        AlertDialog(
+            onDismissRequest = { isConfirmingCategoryDelete = false },
+            title = { Text(stringResource(R.string.delete_category_confirmation)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    isConfirmingCategoryDelete = false
+                    onDeleteCategory(category.id)
+                }) {
+                    Text(
+                        stringResource(R.string.delete_category),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { isConfirmingCategoryDelete = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
+    }
     dishToDelete?.let { dish ->
         AlertDialog(
             onDismissRequest = { dishToDelete = null },
@@ -976,6 +1014,7 @@ private fun DishEditorCard(
     dish: MenuDish,
     enabled: Boolean,
     onSave: (MenuDish, String, String, String, Boolean) -> Unit,
+    onRequestDelete: (MenuDish) -> Unit,
 ) {
     var name by remember(dish.id) { mutableStateOf(dish.name) }
     var description by remember(dish.id) { mutableStateOf(dish.description) }
@@ -1009,6 +1048,12 @@ private fun DishEditorCard(
             Button(enabled = enabled && name.isNotBlank(), onClick = {
                 onSave(dish, name.trim(), description, price, isVisible)
             }) { Text(stringResource(R.string.save_dish)) }
+            TextButton(enabled = enabled, onClick = { onRequestDelete(dish) }) {
+                Text(
+                    stringResource(R.string.delete_dish),
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
         }
     }
 }

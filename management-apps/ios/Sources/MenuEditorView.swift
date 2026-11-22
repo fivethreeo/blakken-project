@@ -109,6 +109,7 @@ private struct CategoryEditorView: View {
     @State private var name = ""
     @State private var isVisible = true
     @State private var didLoadName = false
+    @State private var isConfirmingCategoryDelete = false
     @State private var dishToDeleteID: Int?
     @State private var isConfirmingDishDelete = false
 
@@ -136,6 +137,24 @@ private struct CategoryEditorView: View {
                     }
                 }
                 .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.isLoading)
+                Button("management.deleteCategory", role: .destructive) {
+                    isConfirmingCategoryDelete = true
+                }
+                .disabled(model.isLoading)
+                .confirmationDialog(
+                    "management.deleteCategoryConfirmation",
+                    isPresented: $isConfirmingCategoryDelete,
+                    titleVisibility: .visible
+                ) {
+                    Button("management.deleteCategory", role: .destructive) {
+                        Task {
+                            await model.deleteCategory(menuID: menu.id, categoryID: categoryID)
+                            if model.errorMessage == nil {
+                                dismiss()
+                            }
+                        }
+                    }
+                }
             }
 
             Section("management.dishes") {
@@ -229,6 +248,7 @@ private struct DishEditorView: View {
     @State private var description: String
     @State private var price: String
     @State private var isVisible: Bool
+    @State private var isConfirmingDelete = false
 
     private var dish: ManagementDish? {
         guard let dishID, let categories = model.menuContent?.categories else { return nil }
@@ -289,7 +309,27 @@ private struct DishEditorView: View {
                     }
                 }
                 .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.isLoading)
-
+                if dishID != nil {
+                    Button("management.deleteDish", role: .destructive) {
+                        isConfirmingDelete = true
+                    }
+                    .disabled(model.isLoading)
+                    .confirmationDialog(
+                        "management.deleteDishConfirmation",
+                        isPresented: $isConfirmingDelete,
+                        titleVisibility: .visible
+                    ) {
+                        Button("management.deleteDish", role: .destructive) {
+                            guard let dishID else { return }
+                            Task {
+                                await model.deleteDish(menuID: menu.id, dishID: dishID)
+                                if model.errorMessage == nil {
+                                    dismiss()
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
         .navigationTitle(dish == nil ? String(localized: "management.addDish") : String(localized: "management.editDish"))
